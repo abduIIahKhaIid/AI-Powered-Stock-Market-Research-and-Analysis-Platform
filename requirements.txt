@@ -1,0 +1,9 @@
+# Everything needed to run and test the Python services locally (installed by scripts/setup_venv.*)
+-r backend/requirements.txt
+-r mcp_server/requirements.txt
+
+# Development tools
+pytest>=8
+pytest-asyncio>=0.24
+ruff>=0.6
+mypy>=1.11

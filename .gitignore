@@ -1,0 +1,33 @@
+# Virtual environments
+.venv/
+.venv-linux/
+venv/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# Env / secrets
+.env
+.env.*
+!.env.example
+
+# Scratch / logs
+.tmp/
+*.log
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
