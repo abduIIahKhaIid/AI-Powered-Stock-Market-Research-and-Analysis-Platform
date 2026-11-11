@@ -44,6 +44,28 @@ All ports are bound to `127.0.0.1`, so they are reachable only from your compute
 `GET /health` always answers 200 while the API runs, with `"status": "ok"` when every dependency is
 up and `"degraded"` (plus the failing service) when one is down.
 
+## MCP tools
+
+The Financial Analysis MCP server (`http://localhost:8100/mcp`) currently offers:
+
+| Tool | What it returns |
+|---|---|
+| `search_symbol(query, limit)` | NASDAQ-listed securities matching a ticker or company name |
+| `get_quote(symbol)` | Latest daily price, open, high, low, volume, previous close and change |
+| `get_price_history(symbol, period, interval)` | OHLCV candles (period `5d`…`max`, interval `5m`…`1mo`) |
+| `ping()` | Connectivity check |
+
+Every tool returns `{data, source, as_of, units}` and rejects symbols that are not NASDAQ-listed.
+Prices come from Yahoo Finance via `yfinance` (development source, may be delayed); the symbol list
+comes from the Nasdaq Trader directory and is cached for a day.
+
+Check the tools against live data:
+
+```bash
+docker compose exec mcp python -m financial_mcp.live_check AAPL
+docker compose exec mcp python -m financial_mcp.live_check nvidia
+```
+
 ## Running the Python services without Docker (Windows)
 
 Create the project virtual environment inside this folder (it never touches your system Python):

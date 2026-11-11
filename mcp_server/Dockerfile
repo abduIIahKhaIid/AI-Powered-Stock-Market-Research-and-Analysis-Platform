@@ -6,7 +6,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-RUN useradd --create-home --uid 1000 appuser
+RUN useradd --create-home --uid 1000 appuser \
+    && mkdir -p /home/appuser/.cache/financial_mcp \
+    && chown -R appuser:appuser /home/appuser/.cache
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
