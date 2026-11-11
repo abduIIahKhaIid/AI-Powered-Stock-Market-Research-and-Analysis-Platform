@@ -37,6 +37,9 @@ services:
     environment:
       MCP_HOST: 0.0.0.0
       MCP_PORT: "8100"
+      MCP_CACHE_DIR: /home/appuser/.cache/financial_mcp
+    volumes:
+      - mcpcache:/home/appuser/.cache/financial_mcp
     ports:
       - "127.0.0.1:8100:8100"
     healthcheck:
@@ -102,3 +105,4 @@ services:
 volumes:
   pgdata:
   redisdata:
+  mcpcache:

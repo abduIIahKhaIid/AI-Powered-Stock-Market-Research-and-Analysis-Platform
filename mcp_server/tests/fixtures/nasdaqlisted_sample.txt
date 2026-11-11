@@ -1,0 +1,12 @@
+Symbol|Security Name|Market Category|Test Issue|Financial Status|Round Lot Size|ETF|NextShares
+AAPL|Apple Inc. - Common Stock|Q|N|N|100|N|N
+AMD|Advanced Micro Devices, Inc. - Common Stock|Q|N|N|100|N|N
+APLD|Applied Digital Corporation - Common Stock|G|N|N|100|N|N
+GOOGL|Alphabet Inc. - Class A Common Stock|Q|N|N|100|N|N
+MSFT|Microsoft Corporation - Common Stock|Q|N|N|100|N|N
+NVDA|NVIDIA Corporation - Common Stock|Q|N|N|100|N|N
+QQQ|Invesco QQQ Trust, Series 1|G|N|N|100|Y|N
+SMLC|Small Cap Example Holdings - Common Stock|S|N|D|100|N|N
+SMLCW|Small Cap Example Holdings - Warrant|S|N|D|100|N|N
+ZAZZT|Tick Pilot Test Stock Class A Common Stock|G|Y|N|100|N|N
+File Creation Time: 1111202616:01|||||||
