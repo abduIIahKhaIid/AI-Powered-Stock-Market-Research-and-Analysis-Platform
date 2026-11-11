@@ -1,5 +1,7 @@
 # AI-Powered Stock Market Research and Analysis Platform
 
+[![CI](https://github.com/abduIIahKhaIid/AI-Powered-Stock-Market-Research-and-Analysis-Platform/actions/workflows/ci.yml/badge.svg)](https://github.com/abduIIahKhaIid/AI-Powered-Stock-Market-Research-and-Analysis-Platform/actions/workflows/ci.yml)
+
 A conversational assistant for **NASDAQ-listed stocks** that brings market data, company research and
 analysis into one chat. It shows candlestick charts and indicators, financial statements and
 valuation, comparisons, projections and what-if scenarios, with **sources and assumptions on every
@@ -81,11 +83,23 @@ On Linux or WSL use `scripts/setup_venv.sh` instead.
 From the repository root, with the virtual environment active:
 
 ```bash
-pytest            # backend and MCP server tests
-ruff check .      # lint
+pytest                                  # backend and MCP server tests
+ruff check . && ruff format --check backend mcp_server
 mypy backend mcp_server
-cd frontend && npm run build   # type-check and build the frontend
+cd frontend && npm run lint && npm test && npm run build
 ```
+
+### Continuous integration
+
+GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and on pushes to `main`:
+
+| Job | Checks |
+|---|---|
+| Backend (ruff, mypy, pytest) | lint, format, type check, unit tests |
+| Frontend (eslint, vitest, build) | lint, component tests, type check and production build |
+| Docker stack smoke test | builds every image, starts postgres, redis, mcp and api, and requires `/health` to report `ok` |
+
+All three must pass before a pull request can be merged into `main`.
 
 ## Project documents
 
