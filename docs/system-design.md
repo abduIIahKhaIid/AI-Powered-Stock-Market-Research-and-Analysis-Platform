@@ -35,7 +35,7 @@ Browser (React SPA)
    ▼
 Nginx (TLS, static files, reverse proxy)
    ▼
-FastAPI API ──► Agent Harness ──► LLM Gateway (LiteLLM, OpenAI-compatible) ──► LLM provider(s)
+FastAPI API ──► Agent Harness ──► LLM Gateway (OpenAI-compatible client) ──► LLM provider(s)
    │                 │
    │                 ├─► Policy Engine (tool allowlist, approvals, limits)
    │                 ├─► MCP Client ──► Financial Analysis MCP (custom)
@@ -84,9 +84,11 @@ Coordinates the model, context, permissions and analysis workflow.
 6. **Response composer**: attaches sources (provider, endpoint, filing link, as-of timestamp), assumptions, and the disclaimer where needed.
 
 ### 3.4 LLM Gateway
-- LiteLLM (or a thin OpenAI-compatible client) so the provider is a config change in `.env`.
+- A thin OpenAI-compatible client (`backend/stock_api/llm`) with presets for Ollama, Groq, Gemini, OpenAI,
+  OpenRouter and Anthropic, so the provider is a config change in `.env`.
+- Optional fallback provider, used only when the primary cannot be reached.
 - Options: local Ollama (development), hosted APIs (demo). Colab + ngrok only for experiments (free Colab sessions can be terminated and remote proxies are disallowed).
-- Retries with backoff, timeouts, token/cost logging per request.
+- Retries with backoff, timeouts, token/cost logging per request. `python -m stock_api.llm.check` verifies tool calling.
 
 ### 3.5 MCP layer (hybrid)
 **Custom Financial Analysis MCP server** (Python, MCP SDK, runs as its own container):

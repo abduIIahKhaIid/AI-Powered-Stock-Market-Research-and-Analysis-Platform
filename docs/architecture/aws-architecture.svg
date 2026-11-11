@@ -71,7 +71,7 @@
 <rect x="1060" y="450" width="34" height="34" rx="5" fill="#01A88D"/>
 <text x="1077" y="472" font-size="11" font-weight="700" fill="#fff" text-anchor="middle">LLM</text>
 <text x="1104" y="464" font-size="14" font-weight="700" fill="#16191F" text-anchor="start">LLM Gateway</text>
-<text x="1104" y="481" font-size="11.5" font-weight="400" fill="#545B64" text-anchor="start">LiteLLM · OpenAI API</text>
+<text x="1104" y="481" font-size="11.5" font-weight="400" fill="#545B64" text-anchor="start">OpenAI-compatible client</text>
 <text x="1104" y="496" font-size="11.5" font-weight="400" fill="#545B64" text-anchor="start">provider set in .env</text>
 <rect x="530" y="545" width="220" height="150" rx="6" fill="#FFFFFF" stroke="#C925D1" stroke-width="1.4"/>
 <rect x="540" y="555" width="34" height="34" rx="5" fill="#C925D1"/>
