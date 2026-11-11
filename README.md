@@ -109,7 +109,9 @@ All three must pass before a pull request can be merged into `main`.
 
 ## Working agreement
 
-- Branches: `feature/SCRUM-<key>-short-name`; start every PR title with its Jira key.
+See [`CONTRIBUTING.md`](CONTRIBUTING.md) for the full workflow. In short:
+
+- Branches: `feature/SCRUM-<key>-short-name`; start every commit message and PR title with its Jira key.
 - Secrets live only in `.env` (git-ignored); update `.env.example` when you add a setting.
 - Every number shown to users must come from a tool result with a source.
 
