@@ -66,6 +66,35 @@ docker compose exec mcp python -m financial_mcp.live_check AAPL
 docker compose exec mcp python -m financial_mcp.live_check nvidia
 ```
 
+## LLM setup
+
+The API talks to the model through one OpenAI-compatible gateway (`backend/stock_api/llm`), so the
+model is chosen in `.env` and no code changes are needed to switch.
+
+| Option | `.env` |
+|---|---|
+| Ollama on Google Colab, exposed with ngrok | `LLM_PROVIDER=ollama`, `LLM_MODEL=qwen3:8b`, `LLM_API_BASE=https://<id>.ngrok-free.app` |
+| Ollama on this computer | `LLM_PROVIDER=ollama`, `LLM_API_BASE=http://host.docker.internal:11434` |
+| Hosted API | `LLM_PROVIDER=groq` / `gemini` / `openai` / `openrouter` / `anthropic`, `LLM_MODEL`, `LLM_API_KEY` |
+
+For Colab, open `notebooks/ollama_colab_ngrok.ipynb` in a GPU runtime, add your ngrok authtoken as
+the Colab secret `NGROK_AUTHTOKEN`, run all cells and copy the printed URL into `LLM_API_BASE`.
+The URL changes every time the notebook restarts. The gateway adds `/v1` and the
+`ngrok-skip-browser-warning` header for ngrok URLs. Anyone who has the URL can use your model, so
+keep it private and stop the notebook when you are done.
+
+Set `LLM_FALLBACK_*` to a hosted provider so chat keeps working when the Colab session ends: the
+gateway switches to it only when the primary cannot be reached (connection error, timeout, 5xx,
+rate limit or an offline ngrok tunnel), never for bad requests.
+
+Check the configured model, including tool calling:
+
+```bash
+docker compose exec api python -m stock_api.llm.check
+```
+
+Every call logs provider, model, tokens, estimated cost (`LLM_PRICE_*`), latency and fallback use.
+
 ## Running the Python services without Docker (Windows)
 
 Create the project virtual environment inside this folder (it never touches your system Python):

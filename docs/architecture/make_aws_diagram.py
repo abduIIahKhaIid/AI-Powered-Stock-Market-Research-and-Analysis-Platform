@@ -91,7 +91,7 @@ card(c3, 300, cw, 115, "Agent Harness", ["context · planner loop", "permissions
 
 card(c1, 430, cw, 75, "Celery Beat", ["scheduled data refresh"], C["integration"], "BEAT")
 card(c2, 430, cw, 75, "Redis", ["Celery broker · cache", "progress pub/sub"], C["db"], "RDS")
-card(c3, 440, cw, 75, "LLM Gateway", ["LiteLLM · OpenAI API", "provider set in .env"], C["ai"], "LLM")
+card(c3, 440, cw, 75, "LLM Gateway", ["OpenAI-compatible client", "provider set in .env"], C["ai"], "LLM")
 
 card(c1, 545, cw, 150, "PostgreSQL", ["users · conversations", "tool-call audit log", "approvals · jobs", "job results (JSONB)", "OHLCV + XBRL cache"], C["db"], "PG")
 A(f'<rect x="{c1}" y="705" width="{cw}" height="30" rx="4" fill="#F2F8EF" stroke="{C["storage"]}" stroke-width="1.2"/>')
