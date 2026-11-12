@@ -1,10 +1,12 @@
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "./chat/useChat";
+import AnalysisView from "./components/AnalysisView";
 import Composer from "./components/Composer";
 import MessageView from "./components/MessageView";
 import ModeToggle from "./components/ModeToggle";
 import Sidebar from "./components/Sidebar";
 import StarterPrompts from "./components/StarterPrompts";
+import type { SavedAnalysis } from "./jobs/types";
 
 // Keep following the stream only while the reader is near the bottom.
 const STICK_THRESHOLD_PX = 120;
@@ -12,6 +14,8 @@ const STICK_THRESHOLD_PX = 120;
 export default function App() {
   const chat = useChat();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openAnalysis, setOpenAnalysis] = useState<SavedAnalysis | null>(null);
+  const closeAnalysis = useCallback(() => setOpenAnalysis(null), []);
   const scrollRef = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -41,6 +45,11 @@ export default function App() {
     setSidebarOpen(false);
   }
 
+  function showAnalysis(analysis: SavedAnalysis) {
+    setOpenAnalysis(analysis);
+    setSidebarOpen(false);
+  }
+
   function newChat() {
     chat.newChat();
     setSidebarOpen(false);
@@ -56,6 +65,7 @@ export default function App() {
         onNew={newChat}
         onDelete={chat.remove}
         onClose={() => setSidebarOpen(false)}
+        onOpenAnalysis={showAnalysis}
       />
 
       <main className="chat">
@@ -90,6 +100,8 @@ export default function App() {
           <Composer streaming={chat.streaming} onSend={send} onStop={chat.stop} />
         </div>
       </main>
+
+      {openAnalysis && <AnalysisView analysis={openAnalysis} onClose={closeAnalysis} />}
     </div>
   );
 }

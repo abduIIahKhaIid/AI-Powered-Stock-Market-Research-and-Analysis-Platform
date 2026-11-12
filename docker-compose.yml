@@ -54,8 +54,11 @@ services:
     env_file: .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
+    environment:
+      JOB_RESULTS_DIR: /data/job-results
     volumes:
       - ./backend:/app
+      - jobresults:/data/job-results
     ports:
       - "127.0.0.1:8000:8000"
     depends_on:
@@ -75,10 +78,13 @@ services:
     build: ./backend
     command: ["celery", "-A", "stock_api.worker", "worker", "-Q", "analysis,sandbox,ingest", "--loglevel=info"]
     env_file: .env
+    environment:
+      JOB_RESULTS_DIR: /data/job-results
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./backend:/app
+      - jobresults:/data/job-results
     depends_on:
       redis:
         condition: service_healthy
@@ -110,3 +116,4 @@ volumes:
   pgdata:
   redisdata:
   mcpcache:
+  jobresults:

@@ -1,5 +1,7 @@
 import type { Conversation } from "../chat/types";
+import type { SavedAnalysis } from "../jobs/types";
 import HealthBadge from "./HealthBadge";
+import SavedAnalyses from "./SavedAnalyses";
 
 interface Props {
   conversations: Conversation[];
@@ -9,6 +11,7 @@ interface Props {
   onNew: () => void;
   onDelete: (id: string) => void;
   onClose: () => void;
+  onOpenAnalysis: (analysis: SavedAnalysis) => void;
 }
 
 function shortDate(timestamp: number): string {
@@ -21,7 +24,8 @@ function shortDate(timestamp: number): string {
 }
 
 export default function Sidebar(props: Props) {
-  const { conversations, activeId, open, onSelect, onNew, onDelete, onClose } = props;
+  const { conversations, activeId, open, onSelect, onNew, onDelete, onClose, onOpenAnalysis } =
+    props;
   return (
     <>
       <aside className={`sidebar ${open ? "open" : ""}`} aria-label="Conversations">
@@ -74,6 +78,8 @@ export default function Sidebar(props: Props) {
             </ul>
           )}
         </nav>
+
+        <SavedAnalyses onOpen={onOpenAnalysis} />
 
         <footer className="sidebar-foot">
           <HealthBadge />

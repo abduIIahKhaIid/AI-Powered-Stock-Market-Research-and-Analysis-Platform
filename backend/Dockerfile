@@ -7,6 +7,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN useradd --create-home --uid 1000 appuser
+# Saved job results (a volume in docker-compose); owned by the app user.
+RUN mkdir -p /data/job-results && chown appuser /data/job-results
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
