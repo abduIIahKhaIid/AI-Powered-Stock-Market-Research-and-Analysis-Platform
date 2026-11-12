@@ -63,6 +63,9 @@ class YFinanceProvider:
 
     source = "Yahoo Finance via yfinance (unofficial, may be delayed)"
 
+    def next_earnings_date(self, symbol: str) -> str | None:
+        return next_earnings_date(symbol)
+
     def history(self, symbol: str, period: str, interval: str) -> list[Candle]:
         import yfinance as yf  # imported lazily: heavy, and not needed by the tests' fakes
 
@@ -98,6 +101,21 @@ class YFinanceProvider:
                 f"No completed price bars for {symbol} ({period}, {interval}) yet."
             )
         return candles
+
+
+def next_earnings_date(symbol: str) -> str | None:
+    """Next scheduled earnings date from Yahoo Finance, if it has one."""
+    import yfinance as yf
+
+    try:
+        calendar = yf.Ticker(symbol).calendar
+    except Exception:  # noqa: BLE001 - optional data; absence is reported, not raised
+        return None
+    dates = calendar.get("Earnings Date") if isinstance(calendar, dict) else None
+    if not dates:
+        return None
+    first = dates[0] if isinstance(dates, list | tuple) else dates
+    return first.isoformat() if hasattr(first, "isoformat") else str(first)
 
 
 def build_quote(symbol: str, candles: list[Candle]) -> dict[str, Any]:

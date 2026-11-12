@@ -200,6 +200,12 @@ STATEMENTS: dict[str, list[LineItem]] = {
             ("LongTermDebtNoncurrent", "LongTermDebt"),
             instant=True,
         ),
+        LineItem(
+            "short_term_debt",
+            "Short-term debt",
+            ("LongTermDebtCurrent", "ShortTermBorrowings", "CommercialPaper"),
+            instant=True,
+        ),
         LineItem("total_liabilities", "Total liabilities", ("Liabilities",), instant=True),
         LineItem(
             "stockholders_equity",
@@ -228,6 +234,15 @@ STATEMENTS: dict[str, list[LineItem]] = {
             ("PaymentsOfDividends", "PaymentsOfDividendsCommonStock"),
         ),
         LineItem("share_repurchases", "Share repurchases", ("PaymentsForRepurchaseOfCommonStock",)),
+        LineItem(
+            "depreciation_amortization",
+            "Depreciation and amortization",
+            (
+                "DepreciationDepletionAndAmortization",
+                "DepreciationAndAmortization",
+                "DepreciationAmortizationAndAccretionNet",
+            ),
+        ),
     ],
 }
 
@@ -356,4 +371,26 @@ def build_statement(
         "periods": periods,
         "url": periods[0]["link"],
         "latest_filed": max(str(p["filed"]) for p in periods),
+    }
+
+
+def shares_outstanding(facts: dict[str, Any], cik: int) -> dict[str, Any] | None:
+    """Latest common shares outstanding from the filing cover page (dei)."""
+    entries = (
+        facts.get("facts", {})
+        .get("dei", {})
+        .get("EntityCommonStockSharesOutstanding", {})
+        .get("units", {})
+        .get("shares", [])
+    )
+    entries = [e for e in entries if e.get("val") and e.get("form") in FORMS]
+    if not entries:
+        return None
+    latest = max(entries, key=lambda e: (e.get("end", ""), e.get("filed", "")))
+    accession = str(latest.get("accn", ""))
+    return {
+        "value": latest["val"],
+        "date": latest.get("end"),
+        "form": latest.get("form"),
+        "link": FILING_URL.format(cik=cik, accession=accession.replace("-", "")),
     }

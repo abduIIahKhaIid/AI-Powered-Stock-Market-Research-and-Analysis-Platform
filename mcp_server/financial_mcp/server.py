@@ -43,6 +43,16 @@ from financial_mcp.symbols import (
     DirectoryUnavailableError,
     NotNasdaqListedError,
 )
+from financial_mcp.valuation import (
+    ValuationError,
+    compare_table,
+    earnings_history,
+    fundamentals,
+    latest_price,
+    parse_metrics,
+    parse_symbols,
+    valuation_metrics,
+)
 
 SERVER_NAME = "financial-analysis"
 SERVER_VERSION = "0.3.0"
@@ -244,6 +254,97 @@ def get_financial_statements(
         as_of=data["latest_filed"],
         units={"values": "USD; EPS in USD per share; shares in shares"},
     )
+
+
+def _sec_and_prices() -> tuple[Any, Any]:
+    services = get_services()
+    if services.sec is None:
+        raise ToolError("SEC data is not configured on this server.")
+    return services.sec, services.prices
+
+
+def _valuation(symbol: str) -> dict[str, Any]:
+    sec, prices = _sec_and_prices()
+    try:
+        fund = fundamentals(sec, symbol)
+        price = latest_price(prices, symbol)
+    except (SecError, PriceDataError) as exc:
+        raise ToolError(f"{symbol}: {exc}") from exc
+    return valuation_metrics(symbol, price, fund)
+
+
+@mcp.tool(
+    description=(
+        "Valuation metrics for a NASDAQ symbol: price, market cap, P/E, P/S, EV/EBITDA, gross, "
+        "operating and net margin, revenue and EPS growth. Fundamentals come from the latest "
+        "fiscal year in SEC filings, price from the latest close. Each metric has its formula and "
+        "the inputs used; in Detailed mode show the formula and inputs."
+    )
+)
+def get_valuation_metrics(symbol: str) -> dict[str, Any]:
+    listing = _require_listing(symbol)
+    result = _valuation(listing["symbol"])
+    return envelope(
+        result,
+        source=f"{SEC_SOURCE}; {result['inputs']['price']['source']}",
+        as_of=result["inputs"]["price"]["as_of"],
+        units={"market_cap": "USD", "margins_and_growth": "percent", "multiples": "x"},
+    )
+
+
+@mcp.tool(
+    description=(
+        "Earnings history for a NASDAQ symbol: diluted and basic EPS and net income for the last "
+        "5 fiscal years and 8 quarters from SEC filings, plus the next scheduled earnings date "
+        "when one is published."
+    )
+)
+def get_earnings(symbol: str) -> dict[str, Any]:
+    listing = _require_listing(symbol)
+    sec, prices = _sec_and_prices()
+    try:
+        history = earnings_history(sec, listing["symbol"])
+    except SecError as exc:
+        raise ToolError(str(exc)) from exc
+    lookup = getattr(prices, "next_earnings_date", None)
+    upcoming = lookup(listing["symbol"]) if callable(lookup) else None
+    history["next_earnings_date"] = upcoming
+    if upcoming is None:
+        history["note"] = "No upcoming earnings date was published by the data source."
+    latest = history["annual"][0] if history["annual"] else None
+    return envelope(
+        {**history, "url": latest["link"] if latest else None},
+        source=SEC_SOURCE,
+        as_of=latest["filed"] if latest else None,
+        units={"eps": "USD per share", "net_income": "USD"},
+    )
+
+
+@mcp.tool(
+    description=(
+        "Compare 2 to 5 NASDAQ symbols side by side. metrics: any of price, market_cap, pe, ps, "
+        "ev_ebitda, gross_margin, operating_margin, net_margin, revenue_growth, eps_growth "
+        "(default: all). Returns a table with one row per metric and a source for every cell."
+    )
+)
+def compare_stocks(symbols: list[str], metrics: list[str] | None = None) -> dict[str, Any]:
+    try:
+        wanted = parse_symbols(symbols)
+        keys = parse_metrics(metrics)
+    except ValuationError as exc:
+        raise ToolError(str(exc)) from exc
+    listed = [_require_listing(symbol)["symbol"] for symbol in wanted]
+    results: dict[str, dict[str, Any] | str] = {}
+    for symbol in listed:
+        try:
+            results[symbol] = _valuation(symbol)
+        except ToolError as exc:
+            results[symbol] = str(exc)
+    if all(isinstance(r, str) for r in results.values()):
+        raise ToolError("; ".join(str(r) for r in results.values()))
+    table = compare_table(results, keys)
+    as_of = max(r["inputs"]["price"]["as_of"] for r in results.values() if not isinstance(r, str))
+    return envelope(table, source=f"{SEC_SOURCE}; latest closing prices", as_of=as_of)
 
 
 @mcp.custom_route("/health", methods=["GET"])
