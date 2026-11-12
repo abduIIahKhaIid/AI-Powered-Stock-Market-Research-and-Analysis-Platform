@@ -32,7 +32,7 @@ docker compose up --build
 
 | Service | URL | What it is |
 |---|---|---|
-| Frontend | http://localhost:5173 | Web app (shows live system status for now) |
+| Frontend | http://localhost:5173 | Chat web app |
 | API | http://localhost:8000/health | Health of the API and its dependencies |
 | API docs | http://localhost:8000/docs | Interactive OpenAPI docs |
 | MCP server | http://localhost:8100/health | Financial Analysis MCP server (`/mcp` endpoint) |
@@ -127,6 +127,24 @@ Try it from the terminal:
 docker compose exec api python -m stock_api.agent.ask "What is NVIDIA's latest price?"
 docker compose exec api python -m stock_api.agent.ask --detailed "How did AAPL move over the last month?"
 ```
+
+## Using the web app
+
+Open http://localhost:5173 and ask a question, or pick one of the starter prompts.
+
+- **Streaming answers.** The answer appears as the model writes it (`POST /api/chat`, read as a
+  Server-Sent Events stream). **Stop** cancels a running answer.
+- **Tool timeline.** Above each answer, a collapsible list shows every data fetch: the tool, its
+  arguments, a short preview of the result, the source, the as-of date and how long it took.
+- **Sources and disclaimer.** Each answer ends with the sources it used and the
+  not-financial-advice note.
+- **Simple / Detailed.** The toggle in the header is sent with every message and remembered.
+- **Conversations.** The sidebar lists your chats; they are kept in this browser
+  (`localStorage`), and follow-up questions reuse the API's `conversation_id`. On narrow screens
+  the sidebar opens from the menu button.
+
+The dev server forwards `/api/*` to the API (`VITE_API_PROXY_TARGET`, default
+`http://localhost:8000`).
 
 ## Running the Python services without Docker (Windows)
 

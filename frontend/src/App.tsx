@@ -1,89 +1,95 @@
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useChat } from "./chat/useChat";
+import Composer from "./components/Composer";
+import MessageView from "./components/MessageView";
+import ModeToggle from "./components/ModeToggle";
+import Sidebar from "./components/Sidebar";
+import StarterPrompts from "./components/StarterPrompts";
 
-type Health = {
-  status: "ok" | "degraded";
-  version: string;
-  environment: string;
-  services: Record<string, string>;
-};
-
-const REFRESH_MS = 10_000;
+// Keep following the stream only while the reader is near the bottom.
+const STICK_THRESHOLD_PX = 120;
 
 export default function App() {
-  const [health, setHealth] = useState<Health | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [checkedAt, setCheckedAt] = useState<Date | null>(null);
+  const chat = useChat();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stickToBottom = useRef(true);
 
-  useEffect(() => {
-    let cancelled = false;
+  const active = chat.activeConversation;
+  const messages = useMemo(() => active?.messages ?? [], [active]);
 
-    async function load() {
-      try {
-        const response = await fetch("/api/health");
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        const body = (await response.json()) as Health;
-        if (!cancelled) {
-          setHealth(body);
-          setError(null);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setHealth(null);
-          setError(err instanceof Error ? err.message : "Request failed");
-        }
-      } finally {
-        if (!cancelled) setCheckedAt(new Date());
-      }
-    }
+  useLayoutEffect(() => {
+    const element = scrollRef.current;
+    if (element && stickToBottom.current) element.scrollTop = element.scrollHeight;
+  }, [messages]);
 
-    load();
-    const timer = window.setInterval(load, REFRESH_MS);
-    return () => {
-      cancelled = true;
-      window.clearInterval(timer);
-    };
-  }, []);
+  function onScroll() {
+    const element = scrollRef.current;
+    if (!element) return;
+    stickToBottom.current =
+      element.scrollHeight - element.scrollTop - element.clientHeight < STICK_THRESHOLD_PX;
+  }
+
+  function send(text: string) {
+    stickToBottom.current = true;
+    chat.send(text);
+  }
+
+  function select(id: string) {
+    stickToBottom.current = true;
+    chat.select(id);
+    setSidebarOpen(false);
+  }
+
+  function newChat() {
+    chat.newChat();
+    setSidebarOpen(false);
+  }
 
   return (
-    <main className="page">
-      <header>
-        <h1>Stock Research Assistant</h1>
-        <p className="muted">NASDAQ research with sources on every number. Chat arrives in SCRUM-35.</p>
-      </header>
+    <div className="app">
+      <Sidebar
+        conversations={chat.conversations}
+        activeId={active?.id ?? null}
+        open={sidebarOpen}
+        onSelect={select}
+        onNew={newChat}
+        onDelete={chat.remove}
+        onClose={() => setSidebarOpen(false)}
+      />
 
-      <section className="card" aria-live="polite">
-        <div className="card-head">
-          <h2>System status</h2>
-          {health && <span className={`pill ${health.status}`}>{health.status}</span>}
-          {error && <span className="pill degraded">API unreachable</span>}
+      <main className="chat">
+        <header className="chat-header">
+          <button
+            type="button"
+            className="icon-button menu-button"
+            onClick={() => setSidebarOpen(true)}
+          >
+            <span aria-hidden="true">☰</span>
+            <span className="visually-hidden">Open conversations</span>
+          </button>
+          <h1 className="chat-title">{active?.title ?? "New chat"}</h1>
+          <ModeToggle mode={chat.mode} onChange={chat.setMode} />
+        </header>
+
+        <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>
+          <div className="chat-column">
+            {messages.length === 0 ? (
+              <StarterPrompts mode={chat.mode} onPick={send} />
+            ) : (
+              <div className="messages" aria-live="polite">
+                {messages.map((message) => (
+                  <MessageView key={message.id} message={message} />
+                ))}
+              </div>
+            )}
+          </div>
         </div>
 
-        {error && <p className="error">Could not reach the API: {error}</p>}
-
-        {health && (
-          <table>
-            <thead>
-              <tr>
-                <th>Service</th>
-                <th>Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {Object.entries(health.services).map(([name, value]) => (
-                <tr key={name}>
-                  <td>{name}</td>
-                  <td className={value === "ok" ? "ok-text" : "error"}>{value}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
-
-        <p className="muted small">
-          {health && `API v${health.version} (${health.environment}). `}
-          {checkedAt && `Last checked ${checkedAt.toLocaleTimeString()}.`}
-        </p>
-      </section>
-    </main>
+        <div className="chat-column">
+          <Composer streaming={chat.streaming} onSend={send} onStop={chat.stop} />
+        </div>
+      </main>
+    </div>
   );
 }
