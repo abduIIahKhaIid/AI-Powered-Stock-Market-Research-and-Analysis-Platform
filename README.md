@@ -54,7 +54,11 @@ The Financial Analysis MCP server (`http://localhost:8100/mcp`) currently offers
 | `get_quote(symbol)` | Latest daily price, open, high, low, volume, previous close and change |
 | `get_price_history(symbol, period, interval)` | OHLCV candles (period `5d`…`max`, interval `5m`…`1mo`) |
 | `compute_indicators(symbol, indicators, period, interval)` | SMA, EMA, RSI, MACD, Bollinger Bands, ATR, VWAP: latest and recent values, factual signals, beginner explanations |
+| `get_financial_statements(symbol, statement, freq, years)` | Income, balance sheet or cash flow from SEC 10-K/10-Q XBRL data, annual or quarterly, each period linked to its filing |
 | `ping()` | Connectivity check |
+
+SEC data needs `SEC_USER_AGENT` in `.env` set to your name and a contact email (an SEC requirement);
+requests stay under 10 per second and responses are cached for a day.
 
 Every tool returns `{data, source, as_of, units}` and rejects symbols that are not NASDAQ-listed.
 Prices come from Yahoo Finance via `yfinance` (development source, may be delayed); the symbol list

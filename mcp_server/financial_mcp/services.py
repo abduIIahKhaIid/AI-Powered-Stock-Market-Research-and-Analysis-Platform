@@ -1,4 +1,4 @@
-"""Shared dependencies for the tools (symbol directory and price provider).
+"""Shared dependencies for the tools (symbol directory, price provider, SEC client).
 
 Created lazily from environment variables; tests swap them with `set_services`.
 """
@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from financial_mcp.market_data import PriceProvider, YFinanceProvider
+from financial_mcp.sec import SecClient
 from financial_mcp.symbols import NASDAQ_LISTED_URL, NasdaqDirectory
 
 
@@ -15,6 +16,7 @@ from financial_mcp.symbols import NASDAQ_LISTED_URL, NasdaqDirectory
 class Services:
     directory: NasdaqDirectory
     prices: PriceProvider
+    sec: SecClient | None = None
 
 
 _services: Services | None = None
@@ -31,6 +33,7 @@ def build_default_services() -> Services:
             url=os.getenv("NASDAQ_DIRECTORY_URL", NASDAQ_LISTED_URL),
         ),
         prices=YFinanceProvider(),
+        sec=SecClient(os.getenv("SEC_USER_AGENT", ""), default_cache_dir()),
     )
 
 
