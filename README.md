@@ -154,6 +154,20 @@ stream sends `approval_required`, the UI shows a card, and `POST /approvals/{id}
 `APPROVAL_TIMEOUT_SECONDS`. Every tool call and approval is stored in Postgres (`tool_calls`,
 `approvals`).
 
+**Background jobs.** Long analyses run in Celery workers (queues `analysis`, `sandbox`,
+`ingest`). Each job is a row in the `analysis_jobs` table with status
+`queued -> running -> succeeded | failed | cancelled`, progress 0-100 and a stage text.
+
+| Endpoint | What it does |
+|---|---|
+| `POST /jobs` `{"kind": "indicator_scan", "params": {"symbols": ["AAPL", "NVDA"]}}` | Queue a job (202) |
+| `GET /jobs/{id}` | Status, progress, stage, result or error |
+| `POST /jobs/{id}/cancel` | Cancel a queued job, or stop a running one at its next step |
+| `GET /jobs?conversation_id=&status=` | List jobs |
+
+Job kinds: `indicator_scan` (indicators for up to 10 symbols, 120 s soft / 150 s hard limit) and
+`refresh_directory` (run daily by Celery Beat on the `ingest` queue).
+
 Try it from the terminal:
 
 ```bash
