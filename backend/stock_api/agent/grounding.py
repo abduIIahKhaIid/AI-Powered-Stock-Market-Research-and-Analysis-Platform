@@ -11,7 +11,9 @@ Dates, years, list markers, durations ("50-day", "6 months"), small counts, inde
 
 from __future__ import annotations
 
+import ast
 import bisect
+import operator
 import re
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -82,6 +84,12 @@ _SCALES = {
 
 # Plain integers below this (counts like "2 tools") are not checked.
 _SMALL_INTEGER = 10
+
+
+# Numbers that appear in ordinary calculations: percent, thousands, periods per year.
+_CONSTANTS = (100.0, 1000.0, 12.0, 52.0, 252.0, 365.0)
+_MAX_YEARS = 10
+_MAX_BASES = 40
 
 
 @dataclass(frozen=True)
@@ -231,59 +239,117 @@ def _collect(payload: Any, values: list[float], pairs: list[tuple[float, float]]
             if not numbers:
                 continue
             values.extend(numbers)
-            values.append(sum(numbers) / len(numbers))
+            values += [sum(numbers), sum(numbers) / len(numbers), float(len(numbers))]
             pairs.extend(_series_pairs(numbers))
+
+
+def _dict_scalars(payload: Any, out: list[float]) -> None:
+    """Scalar figures of single records (a quote), used as bases for growth scenarios."""
+    if isinstance(payload, dict):
+        for value in payload.values():
+            if _is_number(value):
+                out.append(float(value))
+            else:
+                _dict_scalars(value, out)
 
 
 class Evidence:
     """Every value an answer may quote for one turn."""
 
     def __init__(self) -> None:
-        self._values: list[float] = []
+        self._values: list[float] = list(_CONSTANTS)
         self._pairs: list[tuple[float, float]] = []
-        self._sorted: list[float] | None = None
+        self._rates: list[float] = []
+        self._bases: list[float] = []
+        self._sorted: tuple[list[float], list[float]] | None = None
 
     def add_payload(self, payload: Any) -> None:
         _collect(payload, self._values, self._pairs)
+        _dict_scalars(payload, self._bases)
         self._sorted = None
+
+    def add_rate(self, percent: float) -> None:
+        """A growth or change rate the user or a stated assumption gave, e.g. 10 for 10%."""
+        self._rates.append(percent)
+        self._values.append(percent)
+        self._sorted = None
+
+    def add_values(self, values: Iterable[float]) -> None:
+        self._values.extend(values)
+        self._sorted = None
+
+    def copy(self) -> Evidence:
+        clone = Evidence()
+        clone._values = list(self._values)
+        clone._pairs = list(self._pairs)
+        clone._rates = list(self._rates)
+        clone._bases = list(self._bases)
+        return clone
 
     def add_text(self, text: str) -> None:
         """Numbers the user wrote, tool arguments, earlier answers."""
         for mention in extract_numbers(text):
             self._values.append(mention.value)
+            if mention.percent:
+                self._rates.append(mention.value)
         for match in re.finditer(r"\d+(?:\.\d+)?", text.replace(",", "")):
             self._values.append(float(match.group()))
         self._sorted = None
 
-    def _build(self) -> list[float]:
-        values = list(self._values)
+    def _build(self) -> tuple[list[float], list[float]]:
+        """Two pools: amounts (prices, differences, ratios) and percentages.
+
+        Keeping them apart stops a 4.9% claim from matching a $4.94 price difference.
+        """
+        raw = list(self._values)
+        amounts = list(raw)
+        percents = list(raw)
         for a, b in self._pairs:
-            values.append(a - b)
+            amounts.append(a - b)
             if b:
-                values.append((a - b) / b * 100)
-                values.append(a / b)
-                values.append(a / b * 100)
-        values += [abs(v) for v in values]
-        return sorted(set(values))
+                amounts.append(a / b)
+                percents += [(a - b) / b * 100, a / b * 100]
+        # Growth at a given rate (what-if questions): rate, factor, compounding over n years,
+        # and the resulting value for each base figure from the tools.
+        for rate in dict.fromkeys(self._rates):
+            growth = rate / 100
+            amounts += [growth, 1 + growth, 1 - growth]
+            percents.append(rate)
+            for years in range(1, _MAX_YEARS + 1):
+                factor = (1 + growth) ** years
+                amounts.append(factor)
+                percents.append((factor - 1) * 100)
+                for base in self._bases[:_MAX_BASES]:
+                    amounts += [base * factor, base * (factor - 1)]
+        pools = []
+        for pool in (amounts, percents):
+            pool += [abs(v) for v in pool]
+            pools.append(sorted(set(pool)))
+        return pools[0], pools[1]
 
     @property
     def values(self) -> list[float]:
+        """Every amount the answer may quote (used by tests and diagnostics)."""
+        return self._pools()[0]
+
+    def _pools(self) -> tuple[list[float], list[float]]:
         if self._sorted is None:
             self._sorted = self._build()
         return self._sorted
 
     def supports(self, mention: NumberMention) -> bool:
-        candidates = [(mention.value, mention.tolerance), (abs(mention.value), mention.tolerance)]
+        amounts, percents = self._pools()
         if mention.percent:
-            # A tool may store 5.47% as the fraction 0.0547.
-            candidates += [
-                (mention.value / 100, mention.tolerance / 100),
-                (abs(mention.value) / 100, mention.tolerance / 100),
+            # A tool may also store 5.47% as the fraction 0.0547.
+            candidates = [
+                (percents, abs(mention.value), mention.tolerance),
+                (amounts, abs(mention.value) / 100, mention.tolerance / 100),
             ]
-        values = self.values
-        for target, tolerance in candidates:
-            index = bisect.bisect_left(values, target - tolerance)
-            if index < len(values) and values[index] <= target + tolerance:
+        else:
+            candidates = [(amounts, abs(mention.value), mention.tolerance)]
+        for pool, target, tolerance in candidates:
+            index = bisect.bisect_left(pool, target - tolerance)
+            if index < len(pool) and pool[index] <= target + tolerance:
                 return True
         return False
 
@@ -311,10 +377,114 @@ def _assumption_spans(text: str) -> list[tuple[int, int]]:
     return spans
 
 
+_OPS: dict[type, Any] = {
+    ast.Add: operator.add,
+    ast.Sub: operator.sub,
+    ast.Mult: operator.mul,
+    ast.Div: operator.truediv,
+    ast.Pow: operator.pow,
+}
+
+
+def _evaluate(node: ast.AST) -> float:
+    if isinstance(node, ast.Expression):
+        return _evaluate(node.body)
+    if isinstance(node, ast.Constant) and isinstance(node.value, int | float):
+        return float(node.value)
+    if isinstance(node, ast.UnaryOp) and isinstance(node.op, ast.USub | ast.UAdd):
+        value = _evaluate(node.operand)
+        return -value if isinstance(node.op, ast.USub) else value
+    if isinstance(node, ast.BinOp) and type(node.op) in _OPS:
+        left, right = _evaluate(node.left), _evaluate(node.right)
+        if isinstance(node.op, ast.Pow) and abs(right) > 100:
+            raise ValueError("exponent too large")
+        return float(_OPS[type(node.op)](left, right))
+    raise ValueError("not arithmetic")
+
+
+def _arithmetic(expression: str) -> tuple[float, list[str]] | None:
+    """Evaluate a written calculation such as '173.73 × (1 + 0.10)^{3}'."""
+    text = expression
+    for latex in ("\\left", "\\right", "\\,", "\\!"):
+        text = text.replace(latex, "")
+    text = re.sub(r"\\(?:times|cdot)", "*", text)
+    text = re.sub(r"\\div", "/", text)
+    text = re.sub(r"\\text\{[^}]*\}", "", text)
+    text = text.replace("{", "(").replace("}", ")").replace("^", "**")
+    text = re.sub(f"[{_DASHES}]", "-", text)
+    text = text.replace("×", "*").replace("·", "*").replace("÷", "/").replace("$", "")
+    text = re.sub(r"(?<=[\d)\s])[xX](?=[\s\d(])", "*", text)
+    text = re.sub(r"(\d),(?=\d{3})", r"\1", text)
+    text = re.sub(r"(\d+(?:\.\d+)?)\s*%", r"(\1/100)", text)
+    text = text.strip(" *_")
+    if (
+        not text
+        or not re.fullmatch(r"[\d.\s+\-*/()]+", text)
+        or not re.search(r"[*/+]|\d\s*-", text)
+    ):
+        return None
+    try:
+        value = _evaluate(ast.parse(text, mode="eval"))
+    except (SyntaxError, ValueError, ZeroDivisionError, OverflowError):
+        return None
+    return value, re.findall(r"\d+(?:\.\d+)?", text)
+
+
+_RESULT = re.compile(rf"\s*(?:≈|~)?\s*(?P<sign>[{_DASHES}])?\s*\$?\s*(?P<num>\d[\d,]*(?:\.\d+)?)")
+
+
+def _calculations(answer: str) -> list[tuple[int, float, float, list[str]]]:
+    """Written calculations 'expression = result': (result offset, result, value, operands)."""
+    found = []
+    for equals in re.finditer(r"=", answer):
+        index = equals.start()
+        start = max(answer.rfind(stop, 0, index) for stop in "\n|:[→=;") + 1
+        evaluated = _arithmetic(answer[start:index])
+        result = _RESULT.match(answer, index + 1)
+        if evaluated is None or result is None:
+            continue
+        number = result.group("num").replace(",", "")
+        shown = float(number) * (-1 if result.group("sign") else 1)
+        found.append((result.start("num"), shown, evaluated[0], evaluated[1]))
+    return found
+
+
+def _decimals(text: str) -> int:
+    return len(text.split(".")[1]) if "." in text else 0
+
+
 def check_answer(answer: str, evidence: Evidence) -> GroundingReport:
     report = GroundingReport()
     stated = _assumption_spans(answer)
-    for mention in extract_numbers(answer):
+    mentions = extract_numbers(answer)
+
+    # Stated assumptions are inputs: their rates feed the growth scenarios.
+    evidence = evidence.copy()
+    for mention in mentions:
+        if any(start <= mention.start < end for start, end in stated):
+            if mention.percent:
+                evidence.add_rate(mention.value)
+            else:
+                evidence.add_values([mention.value])
+
+    # A written calculation counts when its arithmetic is right and every operand is itself
+    # supported, so a made-up figure cannot be laundered through '999 x 1 = 999'.
+    verified: list[float] = []
+    for _, shown, value, operands in _calculations(answer):
+        operands_ok = all(
+            ("." not in op and float(op) < _SMALL_INTEGER)  # exponents, counts
+            or evidence.supports(
+                NumberMention(op, float(op), 0, 0, 0.5 * 10 ** -_decimals(op) * 1.001 + 1e-9)
+            )
+            or any(abs(float(op) - v) <= 0.5 * 10 ** -_decimals(op) + 1e-9 for v in verified)
+            for op in operands
+        )
+        tolerance = max(0.5 * 10 ** -_decimals(str(shown)), abs(shown) * 0.001)
+        if operands_ok and abs(value - shown) <= tolerance:
+            verified += [shown, value]
+    evidence.add_values(verified)
+
+    for mention in mentions:
         if any(start <= mention.start < end for start, end in stated):
             continue
         report.checked.append(mention)

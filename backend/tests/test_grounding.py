@@ -133,3 +133,64 @@ def test_source_link_from_payload() -> None:
     assert source_link({"data": {"filing_url": "https://www.sec.gov/x"}}) == "https://www.sec.gov/x"
     assert source_link({"url": "javascript:alert(1)"}) is None
     assert source_link(QUOTE) is None
+
+
+# --- written calculations and what-if scenarios (live test findings) ----------------------
+
+NVDA_QUOTE = {
+    "data": {"symbol": "NVDA", "price": 173.73, "previous_close": 168.89, "volume": 313417400},
+    "source": "Yahoo Finance via yfinance",
+}
+VOLUMES = [25900600, 38983800, 50061100, 39767300, 59946400, 34573200, 35851400]
+CANDLES = {
+    "data": {"candles": [{"close": c, "volume": v} for c, v in zip(CLOSES, VOLUMES, strict=True)]}
+}
+
+
+def test_what_if_growth_projection_is_accepted() -> None:
+    ev = evidence(NVDA_QUOTE)
+    ev.add_text("What if NVIDIA grows 10% a year for 3 years?")
+    answer = (
+        "Base $173.73.\n"
+        "Year 1: [ 173.73 \\times (1 + 0.10)^{1} = 191.103 ] so $191.10\n"
+        "Year 2: 191.103 × 1.10 = 210.2133 ($210.21)\n"
+        "Year 3: $231.23, total +33.10 %, gain $57.50.\n"
+        "| End of 2028 (2 yr) | $210.21 | +21.00 % |\n"
+    )
+    assert check_answer(answer, ev).ok
+
+
+def test_growth_rate_from_stated_assumptions_is_used() -> None:
+    answer = "**Assumptions**\n- Annual growth 10 %\n\nYear 1 price: $191.10 (+10.00 %)."
+    assert check_answer(answer, evidence(NVDA_QUOTE)).ok
+
+
+def test_correct_written_calculation_with_model_rounding_is_accepted() -> None:
+    # 14.66 / 340.97 x 100 is 4.2995; the model wrote 4.2989 (within 0.1 %).
+    answer = "| Pct | (14.66 / 340.97) × 100 = 4.2989 → 4.30 % |"
+    ev = evidence({"data": {"candles": [{"close": 340.97}, {"close": 355.63}]}})
+    assert check_answer(answer, ev).ok
+
+
+def test_wrong_calculation_and_wrong_total_are_caught() -> None:
+    ev = evidence(CANDLES)
+    # 348.51 - 340.97 = 7.54 is supported; the result 4.9 is wrong (it is 2.21).
+    assert check_answer("(7.54 / 340.97) × 100 = 4.9 %", ev).unverified_texts() == ["4.9 %"]
+    total = f"{sum(VOLUMES):,}"
+    assert check_answer(f"Total volume {total} shares.", ev).ok
+    assert check_answer("Total volume 1,086,734,500 shares.", ev).unverified_texts() == [
+        "1,086,734,500"
+    ]
+
+
+def test_made_up_figures_cannot_be_laundered_through_a_calculation() -> None:
+    ev = evidence(NVDA_QUOTE)
+    report = check_answer("NVDA will reach 999 × 1 = 999 and 173.73 × 1.5 = 260.60.", ev)
+    assert report.unverified_texts() == ["999", "1.5", "260.60"]
+
+
+def test_percent_claim_does_not_match_a_price_difference() -> None:
+    # 355.63 - 350.69 = 4.94 USD must not make "4.9 %" look supported.
+    ev = evidence({"data": {"candles": [{"close": 350.69}, {"close": 355.63}]}})
+    assert check_answer("It moved 4.9 % on the last day.", ev).unverified_texts() == ["4.9 %"]
+    assert check_answer("It moved $4.94 (1.41 %) on the last day.", ev).ok
