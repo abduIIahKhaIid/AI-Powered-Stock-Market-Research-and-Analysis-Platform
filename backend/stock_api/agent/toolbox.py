@@ -22,6 +22,8 @@ class ToolSpec:
     name: str
     description: str
     input_schema: dict[str, Any] = field(default_factory=dict)
+    # From the tool's MCP metadata: {"reason": ..., "estimate": ...} when it needs approval.
+    approval: dict[str, Any] | None = None
 
     def to_openai(self) -> dict[str, Any]:
         return mcp_tool_to_openai(self.name, self.description, self.input_schema)
@@ -84,6 +86,7 @@ class MCPToolbox:
                 name=tool.name,
                 description=tool.description or "",
                 input_schema=dict(tool.input_schema or {}),
+                approval=(tool.meta or {}).get("approval"),
             )
             for tool in result.tools
         ]

@@ -89,6 +89,32 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
       };
     }
 
+    case "approval_required": {
+      const data = event.data;
+      const item = {
+        id: data.approval_id,
+        tool: data.tool,
+        arguments: data.arguments ?? {},
+        reason: data.reason,
+        estimate: data.estimate,
+        status: "pending" as const,
+      };
+      return {
+        ...message,
+        approvals: [...(message.approvals ?? []), item],
+        statusText: "Waiting for your approval…",
+      };
+    }
+
+    case "approval_result":
+      return {
+        ...message,
+        approvals: (message.approvals ?? []).map((item) =>
+          item.id === event.data.approval_id ? { ...item, status: event.data.status } : item,
+        ),
+        statusText: event.data.status === "approved" ? "Running the approved action…" : "Thinking…",
+      };
+
     case "chart": {
       const chart = event.data;
       const others = (message.charts ?? []).filter((c) => c.symbol !== chart.symbol);

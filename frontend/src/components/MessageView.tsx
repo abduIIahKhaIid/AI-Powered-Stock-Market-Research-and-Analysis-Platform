@@ -1,6 +1,7 @@
 import { lazy, Suspense } from "react";
 import { formatAsOf, toolLabel } from "../chat/tools";
 import type { AssistantMessage, ChatMessage, Grounding, Source } from "../chat/types";
+import ApprovalCard from "./ApprovalCard";
 import Markdown from "./Markdown";
 import ToolTimeline from "./ToolTimeline";
 
@@ -80,6 +81,9 @@ function Assistant({ message }: { message: AssistantMessage }) {
   return (
     <article className="message assistant" aria-busy={live}>
       {message.tools.length > 0 && <ToolTimeline tools={message.tools} live={live} />}
+      {message.approvals?.map((item) => (
+        <ApprovalCard key={item.id} item={item} />
+      ))}
 
       {message.text ? (
         <div className={live ? "answer streaming" : "answer"}>

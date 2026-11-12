@@ -171,3 +171,29 @@ describe("chart events", () => {
     expect(message.charts?.map((c) => `${c.symbol}:${c.period}`)).toEqual(["MSFT:1mo", "AAPL:6mo"]);
   });
 });
+
+describe("approval events", () => {
+  it("adds a pending approval and updates it with the decision", () => {
+    const waiting = run([
+      {
+        type: "approval_required",
+        data: {
+          approval_id: "x",
+          tool: "run_python_analysis",
+          arguments: { code: "1" },
+          reason: "Runs code.",
+          estimate: null,
+          expires_in: 300,
+          step: 1,
+        },
+      },
+    ]);
+    expect(waiting.approvals?.[0].status).toBe("pending");
+    expect(waiting.statusText).toBe("Waiting for your approval…");
+    const decided = applyEvent(waiting, {
+      type: "approval_result",
+      data: { approval_id: "x", status: "approved" },
+    });
+    expect(decided.approvals?.[0].status).toBe("approved");
+  });
+});
