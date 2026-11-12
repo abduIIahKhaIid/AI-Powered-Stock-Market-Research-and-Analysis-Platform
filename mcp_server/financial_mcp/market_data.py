@@ -78,6 +78,10 @@ class YFinanceProvider:
         intraday = interval in INTRADAY_PERIODS
         candles: list[Candle] = []
         for stamp, row in frame.iterrows():
+            # Yahoo can return a row for a session that has no trades yet (prices are NaN).
+            # Such a row is not a price; using it would report the latest price as missing.
+            if any(row[column] != row[column] for column in ("Open", "High", "Low", "Close")):
+                continue
             when = stamp.isoformat() if intraday else stamp.date().isoformat()
             candles.append(
                 Candle(
@@ -88,6 +92,10 @@ class YFinanceProvider:
                     close=round(float(row["Close"]), 4),
                     volume=int(row["Volume"]) if row["Volume"] == row["Volume"] else 0,
                 )
+            )
+        if not candles:
+            raise PriceDataError(
+                f"No completed price bars for {symbol} ({period}, {interval}) yet."
             )
         return candles
 

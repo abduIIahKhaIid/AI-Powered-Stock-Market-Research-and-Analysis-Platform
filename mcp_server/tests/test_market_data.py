@@ -84,6 +84,37 @@ def test_yfinance_provider_converts_frame(monkeypatch: pytest.MonkeyPatch) -> No
     assert candles[-1] == Candle("2026-11-11", 2.0, 2.5, 1.5, 2.2568, 200)
 
 
+def test_yfinance_provider_skips_bars_without_prices(monkeypatch: pytest.MonkeyPatch) -> None:
+    nan = float("nan")
+    index = pd.DatetimeIndex(["2026-11-10", "2026-11-11", "2026-11-12"], tz="America/New_York")
+    frame = pd.DataFrame(
+        {
+            "Open": [1.0, 2.0, nan],
+            "High": [1.5, 2.5, nan],
+            "Low": [0.5, 1.5, nan],
+            "Close": [1.25, 2.25, nan],
+            "Volume": [100, 200, 0],
+        },
+        index=index,
+    )
+    _patch_yfinance(monkeypatch, frame)
+    candles = YFinanceProvider().history("NVDA", "5d", "1d")
+    assert [c.time for c in candles] == ["2026-11-10", "2026-11-11"]
+    quote = market_data.build_quote("NVDA", candles)
+    assert quote["price"] == 2.25 and quote["previous_close"] == 1.25
+
+
+def test_yfinance_provider_only_empty_bars_raises(monkeypatch: pytest.MonkeyPatch) -> None:
+    nan = float("nan")
+    index = pd.DatetimeIndex(["2026-11-12"], tz="America/New_York")
+    frame = pd.DataFrame(
+        {"Open": [nan], "High": [nan], "Low": [nan], "Close": [nan], "Volume": [0]}, index=index
+    )
+    _patch_yfinance(monkeypatch, frame)
+    with pytest.raises(PriceDataError, match="No completed price bars"):
+        YFinanceProvider().history("NVDA", "5d", "1d")
+
+
 def test_yfinance_provider_empty_frame_raises(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_yfinance(monkeypatch, pd.DataFrame())
     with pytest.raises(PriceDataError, match="No price data"):
