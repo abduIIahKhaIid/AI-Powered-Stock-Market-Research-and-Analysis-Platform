@@ -216,6 +216,7 @@ def test_system_prompt_modes_and_rules() -> None:
     assert "2026-11-12" in simple and "NASDAQ-listed securities only" in simple
     assert "SIMPLE" in simple and "DETAILED" in detailed
     assert "buy, sell or hold" in simple
+    assert "Roman Urdu" in simple
 
 
 def test_long_tool_results_keep_the_latest_items() -> None:
