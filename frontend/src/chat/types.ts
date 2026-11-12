@@ -10,6 +10,29 @@ export interface Source {
   link?: string | null;
 }
 
+export interface Candle {
+  /** "2026-11-11" for daily bars, an ISO timestamp for intraday bars. */
+  time: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+}
+
+/** Price chart sent by the agent after get_price_history, or by GET /api/prices (SCRUM-36). */
+export interface ChartSpec {
+  kind: "price";
+  symbol: string;
+  name?: string | null;
+  period: string;
+  interval: string;
+  adjusted: boolean;
+  candles: Candle[];
+  source?: string | null;
+  as_of?: string | null;
+}
+
 /** Result of checking every figure in the answer against the tool data (SCRUM-27). */
 export interface Grounding {
   status: "verified" | "corrected" | "removed" | "no_figures";
@@ -54,6 +77,7 @@ export type ChatEvent =
       };
     }
   | { type: "sources"; data: { sources: Source[] } }
+  | { type: "chart"; data: ChartSpec }
   | {
       type: "grounding";
       data: {
@@ -117,6 +141,7 @@ export interface AssistantMessage {
   disclaimer?: string;
   assumptions?: string[];
   grounding?: Grounding;
+  charts?: ChartSpec[];
   usage?: Usage;
   error?: { code: string; message: string };
 }

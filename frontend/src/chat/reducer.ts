@@ -89,6 +89,12 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
       };
     }
 
+    case "chart": {
+      const chart = event.data;
+      const others = (message.charts ?? []).filter((c) => c.symbol !== chart.symbol);
+      return { ...message, charts: [...others, chart] };
+    }
+
     case "sources":
       return { ...message, sources: event.data.sources ?? [] };
 

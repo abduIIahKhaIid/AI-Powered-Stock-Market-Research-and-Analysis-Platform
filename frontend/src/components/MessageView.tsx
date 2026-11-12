@@ -1,7 +1,11 @@
+import { lazy, Suspense } from "react";
 import { formatAsOf, toolLabel } from "../chat/tools";
 import type { AssistantMessage, ChatMessage, Grounding, Source } from "../chat/types";
 import Markdown from "./Markdown";
 import ToolTimeline from "./ToolTimeline";
+
+// The chart library is large; load it only when an answer has a chart.
+const PriceChart = lazy(() => import("./PriceChart"));
 
 function SourceList({ sources }: { sources: Source[] }) {
   return (
@@ -101,6 +105,13 @@ function Assistant({ message }: { message: AssistantMessage }) {
       )}
       {message.state === "stopped" && <p className="muted small">Stopped before finishing.</p>}
 
+      {message.charts && message.charts.length > 0 && (
+        <Suspense fallback={<p className="muted small">Loading chart…</p>}>
+          {message.charts.map((chart) => (
+            <PriceChart key={chart.symbol} spec={chart} />
+          ))}
+        </Suspense>
+      )}
       {message.grounding && message.state === "done" && (
         <GroundingNote grounding={message.grounding} />
       )}
