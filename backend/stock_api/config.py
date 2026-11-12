@@ -43,6 +43,16 @@ class Settings(BaseSettings):
     llm_fallback_api_key: str = ""
     llm_fallback_price_input_per_mtok: float = 0.0
     llm_fallback_price_output_per_mtok: float = 0.0
+    # After the primary fails as unreachable, use the fallback first for this many seconds.
+    llm_primary_cooldown_seconds: float = 120.0
+
+    # Agent harness
+    agent_max_steps: int = 6
+    agent_max_tool_calls: int = 8
+    agent_tool_result_max_chars: int = 6000
+    agent_history_messages: int = 8
+    conversation_ttl_seconds: int = 7 * 24 * 3600
+    mcp_call_timeout: float = 60.0
 
 
 @lru_cache

@@ -10,7 +10,7 @@ import json
 import logging
 import re
 import time
-from collections.abc import Callable, Sequence
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass
 from typing import Any
 
@@ -156,6 +156,68 @@ def mcp_tool_to_openai(name: str, description: str | None, input_schema: dict[st
     }
 
 
+@dataclass(frozen=True)
+class TextDelta:
+    """A piece of the answer text, streamed as it is generated."""
+
+    text: str
+
+
+StreamEvent = TextDelta | ChatResult
+
+
+class _ThinkFilter:
+    """Drops <think>...</think> blocks from streamed text, even when tags span chunks."""
+
+    OPEN, CLOSE = "<think>", "</think>"
+
+    def __init__(self) -> None:
+        self._pending = ""
+        self._inside = False
+        self._emitted_any = False
+
+    def _emit(self, text: str) -> str:
+        if not self._emitted_any:
+            text = text.lstrip()
+            if text:
+                self._emitted_any = True
+        return text
+
+    def feed(self, text: str) -> str:
+        self._pending += text
+        out: list[str] = []
+        while True:
+            if self._inside:
+                end = self._pending.find(self.CLOSE)
+                if end < 0:
+                    # Keep only what could be the start of the closing tag.
+                    self._pending = self._pending[-(len(self.CLOSE) - 1) :]
+                    break
+                self._pending = self._pending[end + len(self.CLOSE) :]
+                self._inside = False
+                continue
+            start = self._pending.find(self.OPEN)
+            if start >= 0:
+                out.append(self._pending[:start])
+                self._pending = self._pending[start + len(self.OPEN) :]
+                self._inside = True
+                continue
+            keep = 0
+            for size in range(len(self.OPEN) - 1, 0, -1):
+                if self._pending.endswith(self.OPEN[:size]):
+                    keep = size
+                    break
+            out.append(self._pending[: len(self._pending) - keep])
+            self._pending = self._pending[len(self._pending) - keep :]
+            break
+        return self._emit("".join(out))
+
+    def flush(self) -> str:
+        rest = "" if self._inside else self._pending
+        self._pending = ""
+        return self._emit(rest)
+
+
 class LLMGateway:
     def __init__(
         self,
@@ -164,20 +226,65 @@ class LLMGateway:
         *,
         timeout: float = 120.0,
         max_retries: int = 1,
+        primary_cooldown_seconds: float = 120.0,
         client_factory: ClientFactory | None = None,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         self.primary = primary
         self.fallback = fallback
+        self.primary_cooldown_seconds = primary_cooldown_seconds
         self._factory: ClientFactory = client_factory or (
             lambda config: default_client_factory(config, timeout=timeout, max_retries=max_retries)
         )
         self._clients: dict[str, Any] = {}
+        self._clock = clock
+        self._primary_down_until = 0.0
 
     def _client(self, config: ProviderConfig) -> Any:
         key = f"{config.provider}|{config.base_url}"
         if key not in self._clients:
             self._clients[key] = self._factory(config)
         return self._clients[key]
+
+    @property
+    def primary_cooling_down(self) -> bool:
+        return self.fallback is not None and self._clock() < self._primary_down_until
+
+    def _order(self) -> list[tuple[ProviderConfig, bool]]:
+        """Providers to try, each with a flag saying whether it is the fallback."""
+        if self.fallback is None:
+            return [(self.primary, False)]
+        if self.primary_cooling_down:
+            # The primary failed recently: go straight to the fallback, primary last.
+            return [(self.fallback, True), (self.primary, False)]
+        return [(self.primary, False), (self.fallback, True)]
+
+    def _on_failure(self, config: ProviderConfig, exc: Exception) -> None:
+        """Log the failure; raise LLMError unless the next provider should be tried."""
+        unavailable = _is_unavailable(exc)
+        logger.warning(
+            "llm call failed provider=%s error=%s unavailable=%s",
+            config.label,
+            type(exc).__name__,
+            unavailable,
+        )
+        if not unavailable:
+            raise LLMError(
+                f"{config.label}: {type(exc).__name__}: {exc}{_hint(config, exc)}"
+            ) from exc
+        if config is self.primary and self.fallback is not None:
+            self._primary_down_until = self._clock() + self.primary_cooldown_seconds
+
+    def _on_success(self, config: ProviderConfig) -> None:
+        if config is self.primary:
+            self._primary_down_until = 0.0
+
+    def _unavailable(self, last_error: Exception | None) -> LLMUnavailableError:
+        configs = [self.primary] + ([self.fallback] if self.fallback else [])
+        labels = ", ".join(config.label for config in configs)
+        return LLMUnavailableError(
+            f"No LLM provider could be reached ({labels}): {type(last_error).__name__}"
+        )
 
     async def chat(
         self,
@@ -188,36 +295,88 @@ class LLMGateway:
         temperature: float = 0.2,
         max_tokens: int | None = None,
     ) -> ChatResult:
-        configs = [self.primary] + ([self.fallback] if self.fallback else [])
         last_error: Exception | None = None
-        for index, config in enumerate(configs):
+        for config, is_fallback in self._order():
             try:
-                return await self._call(
+                result = await self._call(
                     config,
                     messages,
                     tools=tools,
                     tool_choice=tool_choice,
                     temperature=temperature,
                     max_tokens=max_tokens,
-                    used_fallback=index > 0,
+                    used_fallback=is_fallback,
                 )
             except openai.OpenAIError as exc:
                 last_error = exc
-                unavailable = _is_unavailable(exc)
-                logger.warning(
-                    "llm call failed provider=%s error=%s unavailable=%s",
-                    config.label,
-                    type(exc).__name__,
-                    unavailable,
-                )
-                if not unavailable:
+                self._on_failure(config, exc)
+                continue
+            self._on_success(config)
+            return result
+        raise self._unavailable(last_error) from last_error
+
+    async def stream_chat(
+        self,
+        messages: Sequence[Message],
+        *,
+        tools: Sequence[dict[str, Any]] | None = None,
+        tool_choice: str | dict[str, Any] | None = None,
+        temperature: float = 0.2,
+        max_tokens: int | None = None,
+    ) -> AsyncIterator[StreamEvent]:
+        """Yield TextDelta events as the answer arrives, then one final ChatResult.
+
+        Falls back to the next provider only if nothing has been streamed yet.
+        """
+        last_error: Exception | None = None
+        for config, is_fallback in self._order():
+            streamed = False
+            try:
+                async for event in self._stream(
+                    config,
+                    messages,
+                    tools=tools,
+                    tool_choice=tool_choice,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    used_fallback=is_fallback,
+                ):
+                    if isinstance(event, TextDelta):
+                        streamed = True
+                    yield event
+            except openai.OpenAIError as exc:
+                last_error = exc
+                if streamed:
                     raise LLMError(
-                        f"{config.label}: {type(exc).__name__}: {exc}{_hint(config, exc)}"
+                        f"{config.label}: stream interrupted: {type(exc).__name__}"
                     ) from exc
-        raise LLMUnavailableError(
-            f"No LLM provider could be reached ({', '.join(c.label for c in configs)}): "
-            f"{type(last_error).__name__}"
-        ) from last_error
+                self._on_failure(config, exc)
+                continue
+            self._on_success(config)
+            return
+        raise self._unavailable(last_error) from last_error
+
+    @staticmethod
+    def _request(
+        config: ProviderConfig,
+        messages: Sequence[Message],
+        tools: Sequence[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
+        temperature: float,
+        max_tokens: int | None,
+    ) -> dict[str, Any]:
+        request: dict[str, Any] = {
+            "model": config.model,
+            "messages": list(messages),
+            "temperature": temperature,
+        }
+        if tools:
+            request["tools"] = list(tools)
+            if tool_choice is not None:
+                request["tool_choice"] = tool_choice
+        if max_tokens is not None:
+            request["max_tokens"] = max_tokens
+        return request
 
     async def _call(
         self,
@@ -230,18 +389,7 @@ class LLMGateway:
         max_tokens: int | None,
         used_fallback: bool,
     ) -> ChatResult:
-        request: dict[str, Any] = {
-            "model": config.model,
-            "messages": list(messages),
-            "temperature": temperature,
-        }
-        if tools:
-            request["tools"] = list(tools)
-            if tool_choice is not None:
-                request["tool_choice"] = tool_choice
-        if max_tokens is not None:
-            request["max_tokens"] = max_tokens
-
+        request = self._request(config, messages, tools, tool_choice, temperature, max_tokens)
         started = time.perf_counter()
         response = await self._client(config).chat.completions.create(**request)
         latency_ms = int((time.perf_counter() - started) * 1000)
@@ -256,34 +404,118 @@ class LLMGateway:
             function = getattr(raw_call, "function", None)
             if function is None:
                 continue
-            arguments, raw_text, error = _parse_arguments(function.arguments)
-            calls.append(
-                ToolCall(
-                    id=raw_call.id or f"call_{index}",
-                    name=function.name,
-                    arguments=arguments,
-                    raw_arguments=raw_text,
-                    arguments_error=error,
-                )
-            )
+            calls.append(_tool_call(raw_call.id, index, function.name, function.arguments))
 
-        prompt_tokens = getattr(response.usage, "prompt_tokens", 0) or 0
-        completion_tokens = getattr(response.usage, "completion_tokens", 0) or 0
-        usage = Usage(
+        return self._finish(
+            config,
+            content=strip_thinking(message.content or ""),
+            calls=calls,
+            usage=response.usage,
+            model=response.model,
+            finish_reason=choice.finish_reason,
+            latency_ms=latency_ms,
+            used_fallback=used_fallback,
+        )
+
+    async def _stream(
+        self,
+        config: ProviderConfig,
+        messages: Sequence[Message],
+        *,
+        tools: Sequence[dict[str, Any]] | None,
+        tool_choice: str | dict[str, Any] | None,
+        temperature: float,
+        max_tokens: int | None,
+        used_fallback: bool,
+    ) -> AsyncIterator[StreamEvent]:
+        request = self._request(config, messages, tools, tool_choice, temperature, max_tokens)
+        request["stream"] = True
+        request["stream_options"] = {"include_usage": True}
+        started = time.perf_counter()
+        stream = await self._client(config).chat.completions.create(**request)
+
+        think = _ThinkFilter()
+        raw_text: list[str] = []
+        partial_calls: dict[int, dict[str, Any]] = {}
+        usage: Any = None
+        model: str | None = None
+        finish_reason: str | None = None
+
+        async for chunk in stream:
+            model = getattr(chunk, "model", None) or model
+            if getattr(chunk, "usage", None):
+                usage = chunk.usage
+            for choice in chunk.choices or []:
+                finish_reason = choice.finish_reason or finish_reason
+                delta = choice.delta
+                if delta is None:
+                    continue
+                if delta.content:
+                    raw_text.append(delta.content)
+                    visible = think.feed(delta.content)
+                    if visible:
+                        yield TextDelta(visible)
+                for call_delta in delta.tool_calls or []:
+                    slot = partial_calls.setdefault(
+                        call_delta.index, {"id": None, "name": "", "arguments": ""}
+                    )
+                    if call_delta.id:
+                        slot["id"] = call_delta.id
+                    function = call_delta.function
+                    if function is not None:
+                        if function.name:
+                            slot["name"] = function.name
+                        if function.arguments:
+                            slot["arguments"] += function.arguments
+
+        tail = think.flush()
+        if tail:
+            yield TextDelta(tail)
+        latency_ms = int((time.perf_counter() - started) * 1000)
+        calls = [
+            _tool_call(slot["id"], index, slot["name"], slot["arguments"])
+            for index, slot in sorted(partial_calls.items())
+            if slot["name"]
+        ]
+        yield self._finish(
+            config,
+            content=strip_thinking("".join(raw_text)),
+            calls=calls,
+            usage=usage,
+            model=model,
+            finish_reason=finish_reason,
+            latency_ms=latency_ms,
+            used_fallback=used_fallback,
+        )
+
+    def _finish(
+        self,
+        config: ProviderConfig,
+        *,
+        content: str,
+        calls: list[ToolCall],
+        usage: Any,
+        model: str | None,
+        finish_reason: str | None,
+        latency_ms: int,
+        used_fallback: bool,
+    ) -> ChatResult:
+        prompt_tokens = getattr(usage, "prompt_tokens", 0) or 0
+        completion_tokens = getattr(usage, "completion_tokens", 0) or 0
+        totals = Usage(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
-            total_tokens=getattr(response.usage, "total_tokens", 0)
-            or prompt_tokens + completion_tokens,
+            total_tokens=getattr(usage, "total_tokens", 0) or prompt_tokens + completion_tokens,
             cost_usd=estimate_cost(config, prompt_tokens, completion_tokens),
         )
         result = ChatResult(
-            content=strip_thinking(message.content or ""),
+            content=content,
             tool_calls=calls,
-            usage=usage,
+            usage=totals,
             provider=config.provider,
-            model=response.model or config.model,
+            model=model or config.model,
             latency_ms=latency_ms,
-            finish_reason=choice.finish_reason,
+            finish_reason=finish_reason,
             used_fallback=used_fallback,
         )
         logger.info(
@@ -291,11 +523,22 @@ class LLMGateway:
             "cost_usd=%.6f latency_ms=%d tool_calls=%d fallback=%s",
             result.provider,
             result.model,
-            usage.prompt_tokens,
-            usage.completion_tokens,
-            usage.cost_usd,
+            totals.prompt_tokens,
+            totals.completion_tokens,
+            totals.cost_usd,
             latency_ms,
             len(calls),
             used_fallback,
         )
         return result
+
+
+def _tool_call(call_id: str | None, index: int, name: str, raw_arguments: Any) -> ToolCall:
+    arguments, raw_text, error = _parse_arguments(raw_arguments)
+    return ToolCall(
+        id=call_id or f"call_{index}",
+        name=name,
+        arguments=arguments,
+        raw_arguments=raw_text,
+        arguments_error=error,
+    )
