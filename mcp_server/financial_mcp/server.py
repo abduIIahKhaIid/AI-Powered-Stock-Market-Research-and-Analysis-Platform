@@ -33,6 +33,8 @@ from financial_mcp.market_data import (
     build_quote,
     validate_period_interval,
 )
+from financial_mcp.sec import SOURCE_LABEL as SEC_SOURCE
+from financial_mcp.sec import SecError, build_statement
 from financial_mcp.services import get_services
 from financial_mcp.symbols import (
     SOURCE_LABEL as DIRECTORY_SOURCE,
@@ -210,6 +212,37 @@ def compute_indicators(
         source=services.prices.source,
         as_of=analysis["last_bar"],
         units={"prices": "USD", "rsi": "0-100", "atr": "USD", "volume": "shares"},
+    )
+
+
+@mcp.tool(
+    description=(
+        "Financial statements from the company's SEC filings (10-K annual, 10-Q quarterly). "
+        "statement: income (revenue, gross profit, operating income, net income, EPS), "
+        "balance (cash, assets, liabilities, debt, equity) or cash_flow (operating cash flow, "
+        "capex, free cash flow, dividends, buybacks). freq: annual or quarterly. years: 1-10. "
+        "Values are in USD (EPS in USD per share); each period links to its filing."
+    )
+)
+def get_financial_statements(
+    symbol: str, statement: str = "income", freq: str = "annual", years: int = 5
+) -> dict[str, Any]:
+    listing = _require_listing(symbol)
+    sec = get_services().sec
+    if sec is None:
+        raise ToolError("SEC data is not configured on this server.")
+    years = max(1, min(int(years), 10))
+    count = years if freq == "annual" else min(years * 4, 20)
+    try:
+        cik, filer_name = sec.lookup(listing["symbol"])
+        data = build_statement(sec.company_facts(cik), cik, statement, freq, count)
+    except SecError as exc:
+        raise ToolError(str(exc)) from exc
+    return envelope(
+        {"symbol": listing["symbol"], "name": filer_name, "cik": cik, **data},
+        source=SEC_SOURCE,
+        as_of=data["latest_filed"],
+        units={"values": "USD; EPS in USD per share; shares in shares"},
     )
 
 
