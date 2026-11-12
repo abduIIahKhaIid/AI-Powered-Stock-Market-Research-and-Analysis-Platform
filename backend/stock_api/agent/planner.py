@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
+from ..chart_spec import chart_from_tool
 from ..llm import ChatResult, LLMError, LLMGateway, LLMUnavailableError, TextDelta
 from .composer import disclaimer_for, extract_assumptions, source_link, tool_assumptions
 from .context import (
@@ -218,6 +219,11 @@ class Agent:
                             }
                             tool_trace.append({**record, "arguments": call.arguments})
                             yield AgentEvent("tool_result", record)
+                            chart = (
+                                chart_from_tool(call.name, outcome.payload) if outcome.ok else None
+                            )
+                            if chart is not None:
+                                yield AgentEvent("chart", chart)
                             messages.append(
                                 {
                                     "role": "tool",

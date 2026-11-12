@@ -114,6 +114,7 @@ first event to ask follow-up questions; older turns are summarised automatically
 | `status` | `step` the model is working on |
 | `token` | a piece of the answer text |
 | `tool_call` / `tool_result` | tool name, arguments, ok or error, source, as_of, a small preview |
+| `chart` | a price chart spec (symbol, period, interval, candles, source) after `get_price_history` |
 | `sources` | every data source used, with its as_of date |
 | `grounding` | `fixing` while figures that did not match the data are corrected, `removed` if any were dropped |
 | `done` | full `answer`, `disclaimer`, `assumptions`, `grounding` report, tool trace, tokens, cost and models used |
@@ -129,6 +130,11 @@ assumptions and get an extra line in the disclaimer.
 
 Idle streams get a `: keep-alive` comment every 15 seconds, so slow models do not drop the connection.
 Each question is limited to `AGENT_MAX_STEPS` model calls and `AGENT_MAX_TOOL_CALLS` tool calls.
+
+Answers about price movement show a candlestick chart with volume (TradingView Lightweight Charts,
+attribution kept visible). The chart can switch period (1M to 5Y) through
+`GET /prices/{symbol}?period=6mo&interval=1d` and add SMA 20, SMA 50, Bollinger Bands, RSI 14 and
+MACD, computed in the browser from the same candles.
 
 Try it from the terminal:
 

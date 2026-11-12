@@ -152,3 +152,22 @@ describe("grounding events", () => {
     expect(done.grounding?.status).toBe("corrected");
   });
 });
+
+describe("chart events", () => {
+  it("keeps one chart per symbol, the latest one", () => {
+    const chart = {
+      kind: "price" as const,
+      symbol: "AAPL",
+      period: "1mo",
+      interval: "1d",
+      adjusted: false,
+      candles: [],
+    };
+    const message = run([
+      { type: "chart", data: chart },
+      { type: "chart", data: { ...chart, symbol: "MSFT" } },
+      { type: "chart", data: { ...chart, period: "6mo" } },
+    ]);
+    expect(message.charts?.map((c) => `${c.symbol}:${c.period}`)).toEqual(["MSFT:1mo", "AAPL:6mo"]);
+  });
+});
