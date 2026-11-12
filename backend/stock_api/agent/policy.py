@@ -17,6 +17,9 @@ _TICKER = re.compile(r"^[A-Za-z][A-Za-z0-9.\-]{0,9}$")
 PERIODS = {"5d", "1mo", "3mo", "6mo", "ytd", "1y", "2y", "5y", "10y", "max"}
 INTERVALS = {"5m", "15m", "30m", "1h", "1d", "1wk", "1mo"}
 MAX_SYMBOLS = 5
+# Background jobs (start_job_*) may cover more symbols than one tool call.
+MAX_JOB_SYMBOLS = 10
+JOB_PREFIXES = ("start_job", "submit_job")
 MAX_YEARS = 10
 MAX_LIST = 10
 
@@ -34,7 +37,7 @@ def _is_ticker(value: Any) -> bool:
     return isinstance(value, str) and bool(_TICKER.match(value))
 
 
-def validate_arguments(arguments: dict[str, Any]) -> str | None:
+def validate_arguments(arguments: dict[str, Any], max_symbols: int = MAX_SYMBOLS) -> str | None:
     """Check common arguments before any tool runs; the reason when one is not allowed."""
     for key, value in arguments.items():
         if key == "symbol" and not _is_ticker(value):
@@ -42,8 +45,8 @@ def validate_arguments(arguments: dict[str, Any]) -> str | None:
         if key == "symbols":
             if not isinstance(value, list) or not value:
                 return "symbols must be a list of ticker symbols."
-            if len(value) > MAX_SYMBOLS:
-                return f"Compare at most {MAX_SYMBOLS} symbols at a time."
+            if len(value) > max_symbols:
+                return f"Use at most {max_symbols} symbols at a time."
             bad = [v for v in value if not _is_ticker(v)]
             if bad:
                 return f"Not valid ticker symbols: {', '.join(map(str, bad))}."
@@ -83,7 +86,8 @@ class ToolPolicy:
             return f"Tool '{call.name}' is not available. Use one of: {', '.join(sorted(known))}."
         if call.arguments_error:
             return f"Arguments for '{call.name}' were not valid JSON ({call.arguments_error})."
-        invalid = validate_arguments(call.arguments)
+        limit = MAX_JOB_SYMBOLS if call.name.startswith(JOB_PREFIXES) else MAX_SYMBOLS
+        invalid = validate_arguments(call.arguments, limit)
         if invalid:
             return f"Arguments for '{call.name}' were rejected: {invalid}"
         if calls_made >= self.max_tool_calls:

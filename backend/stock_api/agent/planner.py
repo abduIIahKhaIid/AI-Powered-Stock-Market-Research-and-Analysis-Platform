@@ -26,7 +26,7 @@ from .context import (
     remember_turn,
 )
 from .grounding import FIX_PROMPT, Evidence, GroundingReport, check_answer, remove_ungrounded
-from .policy import ToolPolicy
+from .policy import JOB_PREFIXES, ToolPolicy
 from .toolbox import Toolbox, ToolOutcome, compact_for_model
 
 logger = logging.getLogger("stock_api.agent")
@@ -98,6 +98,21 @@ def _preview(outcome: ToolOutcome) -> Any:
     return str(data)[:300]
 
 
+def _job_started(name: str, outcome: ToolOutcome, conversation_id: str) -> dict[str, Any] | None:
+    """The job_started event for a tool call that queued a background job."""
+    payload = outcome.payload
+    if not (outcome.ok and name.startswith(JOB_PREFIXES) and isinstance(payload, dict)):
+        return None
+    if not isinstance(payload.get("job_id"), str):
+        return None
+    return {
+        "job_id": payload["job_id"],
+        "kind": payload.get("kind"),
+        "title": payload.get("title"),
+        "conversation_id": conversation_id,
+    }
+
+
 class Agent:
     def __init__(
         self,
@@ -113,6 +128,7 @@ class Agent:
         approvals: ApprovalBroker | None = None,
         audit: AuditLog | None = None,
         today: Callable[[], date] = date.today,
+        toolbox_wrapper: Callable[[Toolbox, str], Toolbox] | None = None,
     ) -> None:
         self.gateway = gateway
         self.toolbox_factory = toolbox_factory
@@ -125,6 +141,8 @@ class Agent:
         self.approvals = approvals
         self.audit = audit
         self.today = today
+        # Adds harness tools (such as starting background jobs) for one conversation.
+        self.toolbox_wrapper = toolbox_wrapper
 
     async def _audit_call(
         self,
@@ -179,7 +197,10 @@ class Agent:
 
         llm_failure: LLMError | None = None
         try:
-            async with self.toolbox_factory() as toolbox:
+            async with self.toolbox_factory() as mcp_toolbox:
+                toolbox: Toolbox = mcp_toolbox
+                if self.toolbox_wrapper is not None:
+                    toolbox = self.toolbox_wrapper(mcp_toolbox, conversation_id)
                 # LLM errors are caught inside the MCP session: raised through it, they
                 # would arrive wrapped in an ExceptionGroup by the session's task group.
                 try:
@@ -303,6 +324,9 @@ class Agent:
                             )
                             if chart is not None:
                                 yield AgentEvent("chart", chart)
+                            started = _job_started(call.name, outcome, conversation_id)
+                            if started is not None:
+                                yield AgentEvent("job_started", started)
                             messages.append(
                                 {
                                     "role": "tool",

@@ -10,6 +10,7 @@ from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
 from .jobs import Job, JobKind, JobStore, ResultStore, get_job_store, get_registry, get_result_store
+from .jobs.queue import Queue, get_queue
 from .jobs.registry import JobInputError
 from .jobs.results import ResultFileError, load_result
 from .jobs.store import JobNotFound
@@ -27,24 +28,6 @@ class JobRequest(BaseModel):
     kind: str
     params: dict[str, Any] = Field(default_factory=dict)
     conversation_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
-
-
-class Queue:
-    """Wraps the Celery calls so tests can replace them."""
-
-    def enqueue(self, job: Job, kind: JobKind) -> None:
-        from .worker import enqueue
-
-        enqueue(job, kind)
-
-    def revoke(self, job_id: str) -> None:
-        from .worker import revoke
-
-        revoke(job_id)
-
-
-def get_queue() -> Queue:
-    return Queue()
 
 
 Store = Annotated[JobStore, Depends(get_job_store)]

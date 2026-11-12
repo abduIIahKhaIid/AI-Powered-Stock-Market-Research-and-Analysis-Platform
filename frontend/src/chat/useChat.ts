@@ -1,7 +1,15 @@
 /** Conversation state for the chat screen: sending, streaming, stopping and saving. */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { applyEvent, finishMessage, newAssistantMessage } from "./reducer";
+import { watchJob } from "./jobs";
+import {
+  applyEvent,
+  applyJobProgress,
+  finishMessage,
+  jobNeedsWatching,
+  jobReportMessage,
+  newAssistantMessage,
+} from "./reducer";
 import { ChatHttpError, streamChat } from "./sse";
 import {
   loadConversations,
@@ -11,7 +19,15 @@ import {
   saveMode,
   titleFrom,
 } from "./storage";
-import type { AssistantMessage, Conversation, Mode, UserMessage } from "./types";
+import type {
+  AssistantMessage,
+  Conversation,
+  JobDoneData,
+  JobItem,
+  JobProgressData,
+  Mode,
+  UserMessage,
+} from "./types";
 
 export const INCOMPLETE_MESSAGE =
   "The connection closed before the answer finished. Please ask again.";
@@ -27,6 +43,76 @@ export interface ChatController {
   select: (id: string) => void;
   remove: (id: string) => void;
   setMode: (mode: Mode) => void;
+  /** Goes up each time a background job finishes, so lists of saved results can refresh. */
+  jobsFinished: number;
+}
+
+/** Ids of the jobs that still need their progress stream, with where they live. */
+function jobsToWatch(conversations: Conversation[]): string {
+  const ids: string[] = [];
+  for (const conversation of conversations) {
+    for (const message of conversation.messages) {
+      if (message.role !== "assistant") continue;
+      for (const job of message.jobs ?? []) {
+        if (jobNeedsWatching(job)) ids.push(job.id);
+      }
+    }
+  }
+  return ids.sort().join(",");
+}
+
+function updateJob(
+  conversations: Conversation[],
+  jobId: string,
+  change: (job: JobItem) => JobItem,
+): Conversation[] {
+  return conversations.map((conversation) => {
+    let touched = false;
+    const messages = conversation.messages.map((message) => {
+      if (message.role !== "assistant" || !message.jobs?.some((job) => job.id === jobId)) {
+        return message;
+      }
+      touched = true;
+      return {
+        ...message,
+        jobs: message.jobs.map((job) => (job.id === jobId ? change(job) : job)),
+      };
+    });
+    return touched ? { ...conversation, messages } : conversation;
+  });
+}
+
+/** Mark the job finished and post its summary right after the answer that started it. */
+function reportJob(conversations: Conversation[], done: JobDoneData): Conversation[] {
+  return conversations.map((conversation) => {
+    const index = conversation.messages.findIndex(
+      (message) => message.role === "assistant" && message.jobs?.some((job) => job.id === done.id),
+    );
+    if (index === -1) return conversation;
+    const owner = conversation.messages[index] as AssistantMessage;
+    const job = owner.jobs?.find((item) => item.id === done.id);
+    if (!job || job.reported) return conversation;
+    const updated: AssistantMessage = {
+      ...owner,
+      jobs: owner.jobs?.map((item) =>
+        item.id === done.id
+          ? {
+              ...item,
+              status: done.status,
+              progress: done.status === "succeeded" ? 100 : item.progress,
+              reported: true,
+            }
+          : item,
+      ),
+    };
+    const already = conversation.messages.some(
+      (message) => message.role === "assistant" && message.reportFor === done.id,
+    );
+    const messages = [...conversation.messages];
+    messages[index] = updated;
+    if (!already) messages.push(jobReportMessage(newId(), owner.mode, done));
+    return { ...conversation, messages, updatedAt: Date.now() };
+  });
 }
 
 export function useChat(): ChatController {
@@ -35,6 +121,24 @@ export function useChat(): ChatController {
   const [mode, setModeState] = useState<Mode>(loadMode);
   const [streaming, setStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
+  const [jobsFinished, setJobsFinished] = useState(0);
+  const watching = useMemo(() => jobsToWatch(conversations), [conversations]);
+
+  // One progress stream per unfinished job, also for jobs started before a page reload.
+  useEffect(() => {
+    if (!watching) return;
+    const stops = watching.split(",").map((jobId) =>
+      watchJob(jobId, {
+        onProgress: (data: JobProgressData) =>
+          setConversations((list) => updateJob(list, jobId, (job) => applyJobProgress(job, data))),
+        onDone: (data: JobDoneData) => {
+          setConversations((list) => reportJob(list, data));
+          setJobsFinished((count) => count + 1);
+        },
+      }),
+    );
+    return () => stops.forEach((stop) => stop());
+  }, [watching]);
 
   // Saving on every streamed token would be wasteful; save once the answer settles.
   useEffect(() => {
@@ -158,5 +262,6 @@ export function useChat(): ChatController {
     select,
     remove,
     setMode,
+    jobsFinished,
   };
 }

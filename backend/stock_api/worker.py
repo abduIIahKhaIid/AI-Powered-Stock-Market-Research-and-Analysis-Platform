@@ -6,11 +6,15 @@ Start Beat:      celery -A stock_api.worker beat --loglevel=info
 
 from __future__ import annotations
 
+import asyncio
+
 from celery import Celery
 from celery.schedules import crontab
 
+from stock_api.agent.context import RedisConversationStore, remember_job_report
 from stock_api.config import get_settings
 from stock_api.jobs import Job, JobKind, get_job_store, get_registry, get_result_store
+from stock_api.jobs.reporting import report_text
 from stock_api.jobs.runner import execute, retry_countdown
 
 settings = get_settings()
@@ -45,6 +49,19 @@ def ping() -> str:
     return "pong"
 
 
+def post_report(job: Job) -> None:
+    """Add the finished job's summary to its conversation, for follow-up questions."""
+    if job.conversation_id is None:
+        return
+    text = report_text(job, get_registry().get(job.kind), get_result_store())
+    store = RedisConversationStore(settings.redis_url, settings.conversation_ttl_seconds)
+    asyncio.run(
+        remember_job_report(
+            store, job.conversation_id, text, keep_messages=settings.agent_history_messages
+        )
+    )
+
+
 def run_attempt(job_id: str) -> Job:
     return execute(
         job_id,
@@ -54,6 +71,7 @@ def run_attempt(job_id: str) -> Job:
         inline_max_bytes=settings.job_result_inline_max_bytes,
         retry_base=settings.job_retry_base_seconds,
         retry_cap=settings.job_retry_max_seconds,
+        on_finish=post_report,
     )
 
 

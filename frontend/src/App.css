@@ -783,6 +783,102 @@ a.source-name {
   }
 }
 
+/* ---------- Background job progress ---------- */
+
+.job-card {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+}
+
+.job-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 14px;
+}
+
+.job-title {
+  font-weight: 600;
+}
+
+.job-status {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.job-card.succeeded .job-status {
+  color: var(--accent);
+}
+
+.job-card.failed .job-status,
+.job-error {
+  color: var(--danger);
+}
+
+.job-bar {
+  height: 6px;
+  margin: 8px 0 6px;
+  border-radius: 999px;
+  background: #eef0f3;
+  overflow: hidden;
+}
+
+.job-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+
+.job-card.failed .job-bar span {
+  background: var(--danger);
+}
+
+.job-card.cancelled .job-bar span {
+  background: var(--muted);
+}
+
+.job-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.job-stage {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.job-cancel {
+  flex: none;
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel);
+  font-size: 13px;
+}
+
+.job-cancel:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.job-error {
+  margin: 6px 0 0;
+  font-size: 13px;
+}
+
+.message.job-report .answer {
+  padding-left: 12px;
+  border-left: 3px solid var(--accent);
+}
+
 /* ---------- Saved analyses ---------- */
 
 .saved {

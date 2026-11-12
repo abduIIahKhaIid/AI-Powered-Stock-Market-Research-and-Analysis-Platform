@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { formatAsOf, toolLabel } from "../chat/tools";
 import type { AssistantMessage, ChatMessage, Grounding, Source } from "../chat/types";
 import ApprovalCard from "./ApprovalCard";
+import JobCard from "./JobCard";
 import Markdown from "./Markdown";
 import ToolTimeline from "./ToolTimeline";
 
@@ -68,7 +69,8 @@ export function GroundingNote({ grounding }: { grounding: Grounding }) {
     case "removed":
       return (
         <p className="grounding warn" role="note">
-          {grounding.note ?? "Some figures could not be matched to the source data and were removed."}
+          {grounding.note ??
+            "Some figures could not be matched to the source data and were removed."}
         </p>
       );
     default:
@@ -79,7 +81,10 @@ export function GroundingNote({ grounding }: { grounding: Grounding }) {
 function Assistant({ message }: { message: AssistantMessage }) {
   const live = message.state === "streaming";
   return (
-    <article className="message assistant" aria-busy={live}>
+    <article
+      className={message.reportFor ? "message assistant job-report" : "message assistant"}
+      aria-busy={live}
+    >
       {message.tools.length > 0 && <ToolTimeline tools={message.tools} live={live} />}
       {message.approvals?.map((item) => (
         <ApprovalCard key={item.id} item={item} />
@@ -109,6 +114,10 @@ function Assistant({ message }: { message: AssistantMessage }) {
       )}
       {message.state === "stopped" && <p className="muted small">Stopped before finishing.</p>}
 
+      {message.jobs?.map((job) => (
+        <JobCard key={job.id} job={job} />
+      ))}
+
       {message.charts && message.charts.length > 0 && (
         <Suspense fallback={<p className="muted small">Loading chart…</p>}>
           {message.charts.map((chart) => (
@@ -127,7 +136,9 @@ function Assistant({ message }: { message: AssistantMessage }) {
       {message.state === "done" && (
         <p className="message-meta">
           {message.mode === "detailed" ? "Detailed" : "Simple"}
-          {message.usage && message.usage.tool_calls > 0 && ` · ${message.usage.tool_calls} tool calls`}
+          {message.usage &&
+            message.usage.tool_calls > 0 &&
+            ` · ${message.usage.tool_calls} tool calls`}
           {message.usage?.models.length ? ` · ${message.usage.models.join(", ")}` : ""}
           {message.usage?.used_fallback ? " · fallback model" : ""}
         </p>

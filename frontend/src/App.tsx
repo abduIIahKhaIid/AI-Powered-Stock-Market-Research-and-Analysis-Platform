@@ -66,6 +66,7 @@ export default function App() {
         onDelete={chat.remove}
         onClose={() => setSidebarOpen(false)}
         onOpenAnalysis={showAnalysis}
+        analysesKey={chat.jobsFinished}
       />
 
       <main className="chat">

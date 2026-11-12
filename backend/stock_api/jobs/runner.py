@@ -45,11 +45,35 @@ def execute(
     retry_base: float = 5.0,
     retry_cap: float = 120.0,
     now: Callable[[], datetime] = lambda: datetime.now(UTC),
+    on_finish: Callable[[Job], None] | None = None,
 ) -> Job:
-    """Run one attempt. A job left queued with retry_at set is waiting for its next attempt."""
+    """Run one attempt. A job left queued with retry_at set is waiting for its next attempt.
+
+    `on_finish` is called once, when this call moves the job to a final status.
+    """
     job = store.get(job_id)
     if job.done:
         return job
+    finished = _attempt(job, store, registry, results, inline_max_bytes, retry_base, retry_cap, now)
+    if finished.done and on_finish is not None:
+        try:
+            on_finish(finished)
+        except Exception:  # noqa: BLE001 - the job itself is done; reporting is best effort
+            logger.exception("on_finish failed for job %s", job_id)
+    return finished
+
+
+def _attempt(
+    job: Job,
+    store: JobStore,
+    registry: dict[str, JobKind],
+    results: ResultStore | None,
+    inline_max_bytes: int,
+    retry_base: float,
+    retry_cap: float,
+    now: Callable[[], datetime],
+) -> Job:
+    job_id = job.id
     if job.cancel_requested:
         return store.update(job_id, status="cancelled", stage="Cancelled before it started")
     kind = registry.get(job.kind)

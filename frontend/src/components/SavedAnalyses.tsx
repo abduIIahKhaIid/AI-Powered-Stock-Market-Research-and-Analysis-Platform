@@ -4,6 +4,8 @@ import type { SavedAnalysis } from "../jobs/types";
 
 interface Props {
   onOpen: (analysis: SavedAnalysis) => void;
+  /** Changes when a background job finishes, so the list reloads. */
+  refreshKey?: number;
 }
 
 function finishedOn(analysis: SavedAnalysis): string {
@@ -12,7 +14,7 @@ function finishedOn(analysis: SavedAnalysis): string {
 }
 
 /** Finished background analyses, kept on the server so they survive a restart. */
-export default function SavedAnalyses({ onOpen }: Props) {
+export default function SavedAnalyses({ onOpen, refreshKey = 0 }: Props) {
   const [items, setItems] = useState<SavedAnalysis[] | null>(null);
   const [failed, setFailed] = useState(false);
 
@@ -30,7 +32,7 @@ export default function SavedAnalyses({ onOpen }: Props) {
       },
     );
     return () => controller.abort();
-  }, [reloads]);
+  }, [reloads, refreshKey]);
 
   if (items === null && !failed) return null;
 

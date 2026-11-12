@@ -9,9 +9,10 @@ from ..llm import build_gateway
 from .approvals import ApprovalBroker
 from .audit import PostgresAuditLog
 from .context import RedisConversationStore
+from .job_tools import JobLauncher, JobToolbox
 from .planner import Agent
 from .policy import ToolPolicy
-from .toolbox import MCPToolbox
+from .toolbox import MCPToolbox, Toolbox
 
 
 @lru_cache
@@ -23,6 +24,16 @@ def get_approval_broker() -> ApprovalBroker:
 def create_agent(settings: Settings, approvals: ApprovalBroker | None = None) -> Agent:
     """Raises LLMConfigError when the LLM settings are incomplete."""
     gateway = build_gateway(settings)
+    wrapper = None
+    if settings.agent_jobs_enabled:
+        from ..jobs import get_job_store, get_registry
+        from ..jobs.queue import Queue
+
+        launcher = JobLauncher(get_job_store, get_registry, Queue())
+
+        def wrapper(toolbox: Toolbox, conversation_id: str) -> Toolbox:
+            return JobToolbox(toolbox, launcher, conversation_id)
+
     return Agent(
         gateway,
         lambda: MCPToolbox.connect(settings.mcp_server_url, timeout=settings.mcp_call_timeout),
@@ -36,6 +47,7 @@ def create_agent(settings: Settings, approvals: ApprovalBroker | None = None) ->
         history_messages=settings.agent_history_messages,
         approvals=approvals,
         audit=PostgresAuditLog(settings.database_url) if settings.audit_enabled else None,
+        toolbox_wrapper=wrapper,
     )
 
 

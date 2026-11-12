@@ -61,6 +61,10 @@ def system_prompt(mode: Mode, today: date | None = None) -> str:
             "as_of date is today.",
             "10. For projections, scenarios or what-if questions, list every assumption under "
             "a heading named Assumptions.",
+            "11. To scan indicators for three or more symbols at once, start a background job "
+            "with start_job_indicator_scan. It runs after the user approves it; tell the user "
+            "it has started and that its progress and results will appear in the chat. Do not "
+            "state any figures from a job that has not finished.",
             "",
             _MODE_RULES[mode],
         ]
@@ -141,6 +145,16 @@ SUMMARY_PROMPT = (
     "120 words. Keep the tickers discussed, the figures quoted with their dates and sources, "
     "and what the user wants to know. Do not add anything new."
 )
+
+
+async def remember_job_report(
+    store: ConversationStore, conversation_id: str, report: str, *, keep_messages: int = 8
+) -> None:
+    """Add a finished job's summary to the history, so follow-up questions can use it."""
+    conversation = await store.load(conversation_id)
+    conversation.messages.append({"role": "assistant", "content": report})
+    conversation.messages = conversation.messages[-keep_messages:]
+    await store.save(conversation_id, conversation)
 
 
 async def remember_turn(
