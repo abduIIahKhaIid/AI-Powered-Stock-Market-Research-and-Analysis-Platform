@@ -32,10 +32,19 @@ function updateTool(
 export function applyEvent(message: AssistantMessage, event: ChatEvent): AssistantMessage {
   switch (event.type) {
     case "status":
+      if (event.data.state === "fixing") {
+        return { ...message, statusText: "Correcting figures that did not match the data…" };
+      }
       return {
         ...message,
         statusText: message.tools.length ? "Reading the results…" : "Thinking…",
       };
+
+    case "grounding":
+      if (event.data.state === "fixing") {
+        return { ...message, statusText: "Checking the figures against the data…" };
+      }
+      return message;
 
     case "token": {
       const { text, step } = event.data;
@@ -89,6 +98,8 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
         state: "done",
         text: event.data.answer,
         disclaimer: event.data.disclaimer,
+        assumptions: event.data.assumptions ?? [],
+        grounding: event.data.grounding,
         usage: event.data.usage,
         statusText: undefined,
         tools: message.tools.map((tool) =>

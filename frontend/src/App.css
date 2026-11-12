@@ -526,6 +526,30 @@ textarea:focus-visible {
   color: var(--muted);
 }
 
+.assumptions li + li {
+  margin-top: 2px;
+}
+
+.grounding {
+  margin: 0;
+  font-size: 12px;
+}
+
+.grounding.ok {
+  color: var(--accent-strong);
+}
+
+.grounding.warn {
+  padding: 8px 12px;
+  border-radius: 10px;
+  background: #fff6e0;
+  color: #7a4d00;
+}
+
+a.source-name {
+  color: var(--accent-strong);
+}
+
 .disclaimer {
   margin: 0;
   font-size: 12px;

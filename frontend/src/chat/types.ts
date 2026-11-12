@@ -6,6 +6,18 @@ export interface Source {
   source: string;
   as_of: string | null;
   tool: string;
+  /** Link to the underlying document (for example an SEC filing), when the tool gives one. */
+  link?: string | null;
+}
+
+/** Result of checking every figure in the answer against the tool data (SCRUM-27). */
+export interface Grounding {
+  status: "verified" | "corrected" | "removed" | "no_figures";
+  checked: number;
+  attempts?: number;
+  flagged?: string[];
+  removed?: string[];
+  note?: string | null;
 }
 
 export interface Usage {
@@ -43,12 +55,23 @@ export type ChatEvent =
     }
   | { type: "sources"; data: { sources: Source[] } }
   | {
+      type: "grounding";
+      data: {
+        state: "fixing" | "removed";
+        attempt?: number;
+        unverified?: string[];
+        removed?: string[];
+      };
+    }
+  | {
       type: "done";
       data: {
         conversation_id: string;
         answer: string;
         disclaimer: string;
         usage: Usage;
+        assumptions?: string[];
+        grounding?: Grounding;
       };
     }
   | { type: "error"; data: { code: string; message: string } };
@@ -92,6 +115,8 @@ export interface AssistantMessage {
   tools: ToolStep[];
   sources: Source[];
   disclaimer?: string;
+  assumptions?: string[];
+  grounding?: Grounding;
   usage?: Usage;
   error?: { code: string; message: string };
 }

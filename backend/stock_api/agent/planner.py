@@ -5,6 +5,7 @@ Agent.run() yields AgentEvents that the API streams to the browser as SSE (SCRUM
 
 from __future__ import annotations
 
+import json
 import logging
 import uuid
 from collections.abc import AsyncIterator, Callable
@@ -14,13 +15,14 @@ from datetime import date
 from typing import Any
 
 from ..llm import ChatResult, LLMError, LLMGateway, LLMUnavailableError, TextDelta
+from .composer import disclaimer_for, extract_assumptions, source_link, tool_assumptions
 from .context import (
-    DISCLAIMER,
     ConversationStore,
     Mode,
     build_messages,
     remember_turn,
 )
+from .grounding import FIX_PROMPT, Evidence, GroundingReport, check_answer, remove_ungrounded
 from .policy import ToolPolicy
 from .toolbox import Toolbox, ToolOutcome, compact_for_model
 
@@ -104,6 +106,7 @@ class Agent:
         max_steps: int = 6,
         tool_result_max_chars: int = 6000,
         history_messages: int = 8,
+        max_fix_attempts: int = 2,
         today: Callable[[], date] = date.today,
     ) -> None:
         self.gateway = gateway
@@ -113,6 +116,7 @@ class Agent:
         self.max_steps = max(1, max_steps)
         self.tool_result_max_chars = tool_result_max_chars
         self.history_messages = history_messages
+        self.max_fix_attempts = max_fix_attempts
         self.today = today
 
     async def run(
@@ -126,7 +130,17 @@ class Agent:
         totals = _Totals()
         sources: dict[tuple[str, str | None], dict[str, Any]] = {}
         tool_trace: list[dict[str, Any]] = []
+        outcomes: list[ToolOutcome] = []
         answer = ""
+        last_step = 0
+
+        # Figures the answer may quote: the question, earlier turns and (below) tool data.
+        evidence = Evidence()
+        evidence.add_text(message)
+        evidence.add_text(conversation.summary)
+        for earlier in conversation.messages:
+            if earlier.get("role") == "assistant":
+                evidence.add_text(earlier.get("content", ""))
 
         llm_failure: LLMError | None = None
         try:
@@ -143,6 +157,7 @@ class Agent:
                         # tools so the model has to answer from what it already has.
                         out_of_budget = totals.tool_calls >= self.policy.max_tool_calls
                         final_step = step == self.max_steps or out_of_budget
+                        last_step = step
                         yield AgentEvent("status", {"state": "thinking", "step": step})
 
                         result: ChatResult | None = None
@@ -179,11 +194,16 @@ class Agent:
                                 totals.tool_calls += 1
                                 outcome = await toolbox.call(call.name, call.arguments)
 
+                            evidence.add_text(json.dumps(call.arguments))
+                            if outcome.ok:
+                                evidence.add_payload(outcome.payload)
+                                outcomes.append(outcome)
                             if outcome.ok and outcome.source:
                                 sources[(outcome.source, outcome.as_of)] = {
                                     "source": outcome.source,
                                     "as_of": outcome.as_of,
                                     "tool": call.name,
+                                    "link": source_link(outcome.payload),
                                 }
                             record = {
                                 "id": call.id,
@@ -238,7 +258,75 @@ class Agent:
             yield AgentEvent("error", {"code": "llm_error", "message": str(llm_failure)})
             return
 
+        # Grounding (SCRUM-27): every figure must come from the data. Unmatched figures go
+        # back to the model up to max_fix_attempts times; whatever still fails is removed.
+        report: GroundingReport = check_answer(answer, evidence)
+        attempts = 0
+        flagged: list[str] = []
+        while not report.ok and attempts < self.max_fix_attempts:
+            attempts += 1
+            unverified = report.unverified_texts()
+            flagged += [item for item in unverified if item not in flagged]
+            yield AgentEvent(
+                "grounding",
+                {"state": "fixing", "attempt": attempts, "unverified": unverified},
+            )
+            step = last_step + attempts
+            yield AgentEvent("status", {"state": "fixing", "step": step})
+            fix_messages = [
+                *messages,
+                {"role": "assistant", "content": answer},
+                {"role": "user", "content": FIX_PROMPT.format(items=", ".join(unverified))},
+            ]
+            revised: ChatResult | None = None
+            try:
+                async for event in self.gateway.stream_chat(fix_messages):
+                    if isinstance(event, TextDelta):
+                        yield AgentEvent("token", {"text": event.text, "step": step})
+                    else:
+                        revised = event
+            except LLMError as exc:
+                logger.warning("agent: grounding fix failed: %s", exc)
+                break
+            if revised is not None:
+                totals.add(revised)
+                if revised.content.strip():
+                    answer = revised.content.strip()
+            report = check_answer(answer, evidence)
+
+        removed: list[str] = []
+        if not report.ok:
+            removed = report.unverified_texts()
+            answer = remove_ungrounded(answer, report.ungrounded)
+            report = check_answer(answer, evidence)
+        grounding: dict[str, Any] = {
+            "status": (
+                "removed"
+                if removed
+                else "corrected"
+                if attempts
+                else "verified"
+                if report.checked
+                else "no_figures"
+            ),
+            "checked": len(report.checked),
+            "attempts": attempts,
+            "flagged": flagged,
+            "removed": removed,
+            "note": (
+                f"{len(removed)} figure{'s' if len(removed) != 1 else ''} could not be matched "
+                f"to the source data and {'were' if len(removed) != 1 else 'was'} removed: "
+                + ", ".join(removed)
+                + "."
+                if removed
+                else None
+            ),
+        }
+        if removed:
+            yield AgentEvent("grounding", {"state": "removed", "removed": removed})
         answer = answer or NO_ANSWER
+
+        assumptions = list(dict.fromkeys(extract_assumptions(answer) + tool_assumptions(outcomes)))
         conversation = await remember_turn(
             conversation,
             message,
@@ -254,7 +342,9 @@ class Agent:
             {
                 "conversation_id": conversation_id,
                 "answer": answer,
-                "disclaimer": DISCLAIMER,
+                "disclaimer": disclaimer_for(message, answer, assumptions),
+                "assumptions": assumptions,
+                "grounding": grounding,
                 "tools": tool_trace,
                 "usage": totals.as_dict(),
             },

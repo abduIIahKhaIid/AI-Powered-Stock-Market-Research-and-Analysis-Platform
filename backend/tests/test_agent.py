@@ -87,7 +87,12 @@ async def test_question_uses_mcp_tool_and_streams_answer() -> None:
     assert result["ok"] is True
     assert result["preview"]["price"] == 107.1
     assert of_type(events, "sources")[0]["sources"] == [
-        {"source": "Fake price source (tests)", "as_of": "2026-11-11", "tool": "get_quote"}
+        {
+            "source": "Fake price source (tests)",
+            "as_of": "2026-11-11",
+            "tool": "get_quote",
+            "link": None,
+        }
     ]
     done = of_type(events, "done")[0]
     assert done["answer"].startswith("Apple (AAPL) last closed at 107.1 USD")
@@ -298,3 +303,90 @@ async def test_chat_returns_503_when_llm_not_configured(
     response = await client.post("/chat", json={"message": "hi"})
     assert response.status_code == 503
     assert "not configured" in response.json()["detail"]
+
+
+# --- grounding (SCRUM-27) ------------------------------------------------------------------
+# The fake quote for AAPL: price 107.1, previous close 105.0, change 2.1 (2.0%).
+
+
+async def test_seeded_hallucinated_number_is_caught_and_corrected() -> None:
+    gateway, llm = scripted_gateway(
+        tool_turn(("get_quote", {"symbol": "AAPL"})),
+        text_turn("Apple closed at $107.10, up 9.9% on the day."),
+        text_turn("Apple closed at $107.10, up 2.0% (2.1 USD) from 105.0."),
+    )
+    events = await run(make_agent(gateway), "AAPL today?")
+
+    fixing = [e for e in of_type(events, "grounding") if e["state"] == "fixing"]
+    assert fixing == [{"state": "fixing", "attempt": 1, "unverified": ["9.9%"]}]
+    fix_request = llm.requests[2]
+    assert "tools" not in fix_request
+    assert "9.9%" in fix_request["messages"][-1]["content"]
+    assert fix_request["messages"][-2] == {
+        "role": "assistant",
+        "content": "Apple closed at $107.10, up 9.9% on the day.",
+    }
+    # The corrected text streams as a new step, which replaces the earlier text in the UI.
+    steps = {t["step"] for t in of_type(events, "token")}
+    assert steps == {2, 3}
+
+    done = of_type(events, "done")[0]
+    assert done["answer"] == "Apple closed at $107.10, up 2.0% (2.1 USD) from 105.0."
+    assert done["grounding"]["status"] == "corrected"
+    assert done["grounding"]["flagged"] == ["9.9%"]
+    assert done["grounding"]["removed"] == []
+
+
+async def test_figures_still_wrong_after_two_fixes_are_removed_with_a_note() -> None:
+    wrong = "Apple closed at $107.10. It rose 9.9% today. Volume was 1,500,000 shares."
+    gateway, llm = scripted_gateway(
+        tool_turn(("get_quote", {"symbol": "AAPL"})),
+        text_turn(wrong),
+        text_turn(wrong),
+        text_turn(wrong),
+    )
+    events = await run(make_agent(gateway), "AAPL today?")
+
+    assert len(llm.requests) == 4  # tools, answer, two fixes
+    done = of_type(events, "done")[0]
+    assert done["answer"] == "Apple closed at $107.10. Volume was 1,500,000 shares."
+    grounding = done["grounding"]
+    assert grounding["status"] == "removed"
+    assert grounding["attempts"] == 2
+    assert grounding["removed"] == ["9.9%"]
+    assert "could not be matched" in grounding["note"]
+    assert of_type(events, "grounding")[-1] == {"state": "removed", "removed": ["9.9%"]}
+
+
+async def test_correct_answer_is_verified_without_extra_model_calls() -> None:
+    gateway, llm = scripted_gateway(
+        tool_turn(("get_quote", {"symbol": "AAPL"})),
+        text_turn("AAPL: $107.1, change +2.1 (2.0%), volume 1.5 million, as of Nov 11, 2026."),
+    )
+    events = await run(make_agent(gateway), "AAPL?")
+    assert len(llm.requests) == 2
+    grounding = of_type(events, "done")[0]["grounding"]
+    assert grounding["status"] == "verified"
+    assert grounding["checked"] == 4
+
+
+async def test_projection_answer_gets_assumptions_and_projection_disclaimer() -> None:
+    answer = (
+        "If AAPL grows 5% a year from $107.1, here is the idea.\n\n"
+        "**Assumptions**\n- Growth of 5% a year\n- A discount rate of 8%\n\n"
+        "This is a scenario, not a forecast."
+    )
+    gateway, _ = scripted_gateway(tool_turn(("get_quote", {"symbol": "AAPL"})), text_turn(answer))
+    events = await run(make_agent(gateway), "What if Apple grows 5% a year?")
+    done = of_type(events, "done")[0]
+    assert done["assumptions"] == ["Growth of 5% a year", "A discount rate of 8%"]
+    assert "not predictions of future prices" in done["disclaimer"]
+    assert done["grounding"]["status"] == "verified"  # 8% is a stated assumption
+
+
+async def test_plain_answer_keeps_the_standard_disclaimer() -> None:
+    gateway, _ = scripted_gateway(text_turn("Volume is the number of shares traded."))
+    done = of_type(await run(make_agent(gateway), "What is volume?"), "done")[0]
+    assert done["disclaimer"].startswith("This is educational information")
+    assert "Projections" not in done["disclaimer"]
+    assert done["grounding"]["status"] == "no_figures"
