@@ -280,6 +280,8 @@ async def test_chat_endpoint_streams_events(client: httpx.AsyncClient) -> None:
 async def test_chat_rejects_empty_message_and_bad_conversation_id(
     client: httpx.AsyncClient,
 ) -> None:
+    gateway, _ = scripted_gateway()
+    app.dependency_overrides[chat_module.agent_dependency] = lambda: make_agent(gateway)
     assert (await client.post("/chat", json={"message": ""})).status_code == 422
     bad = await client.post("/chat", json={"message": "hi", "conversation_id": "../x"})
     assert bad.status_code == 422
