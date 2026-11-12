@@ -126,6 +126,8 @@ export default function PriceChart({ spec: initial, fetchPrices = defaultFetchPr
       priceLineVisible: false,
     });
     chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
+    // Keep the candles above the volume bars.
+    candles.priceScale().applyOptions({ scaleMargins: { top: 0.08, bottom: 0.25 } });
     volume.setData(
       spec.candles.map((c) => ({
         time: toTime(c.time),

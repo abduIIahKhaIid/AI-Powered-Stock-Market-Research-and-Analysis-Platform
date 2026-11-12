@@ -5,7 +5,11 @@ import type { ChartSpec } from "../chat/types";
 const calls = vi.hoisted(() => ({ charts: [] as { series: unknown[][]; options: unknown }[] }));
 
 vi.mock("lightweight-charts", () => {
-  const series = () => ({ setData: vi.fn(), createPriceLine: vi.fn() });
+  const series = () => ({
+    setData: vi.fn(),
+    createPriceLine: vi.fn(),
+    priceScale: () => ({ applyOptions: vi.fn() }),
+  });
   return {
     CandlestickSeries: "Candlestick",
     HistogramSeries: "Histogram",
