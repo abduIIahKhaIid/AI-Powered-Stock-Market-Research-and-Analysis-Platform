@@ -55,6 +55,9 @@ The Financial Analysis MCP server (`http://localhost:8100/mcp`) currently offers
 | `get_price_history(symbol, period, interval)` | OHLCV candles (period `5d`…`max`, interval `5m`…`1mo`) |
 | `compute_indicators(symbol, indicators, period, interval)` | SMA, EMA, RSI, MACD, Bollinger Bands, ATR, VWAP: latest and recent values, factual signals, beginner explanations |
 | `get_financial_statements(symbol, statement, freq, years)` | Income, balance sheet or cash flow from SEC 10-K/10-Q XBRL data, annual or quarterly, each period linked to its filing |
+| `get_valuation_metrics(symbol)` | Price, market cap, P/E, P/S, EV/EBITDA, margins, revenue and EPS growth, each with formula and sourced inputs |
+| `get_earnings(symbol)` | Diluted/basic EPS and net income for 5 years and 8 quarters, next earnings date |
+| `compare_stocks(symbols, metrics)` | 2 to 5 symbols side by side, one row per metric, a source per cell |
 | `ping()` | Connectivity check |
 
 SEC data needs `SEC_USER_AGENT` in `.env` set to your name and a contact email (an SEC requirement);

@@ -28,7 +28,8 @@ _MODE_RULES: dict[str, str] = {
     "detailed": (
         "Explanation mode: DETAILED. The reader is a finance student or analyst. Give a "
         "structured answer with headings or bullet points, the key figures with units and "
-        "dates, how each figure is calculated where relevant, and the caveats."
+        "dates, how each figure is calculated where relevant (when a tool returns a formula "
+        "and its inputs, show them), and the caveats."
     ),
 }
 
