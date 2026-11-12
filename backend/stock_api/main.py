@@ -7,6 +7,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 from stock_api import health
+from stock_api.chat import router as chat_router
 from stock_api.config import Settings, get_settings
 
 settings = get_settings()
@@ -24,6 +25,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+app.include_router(chat_router)
 
 
 class LiveResponse(BaseModel):

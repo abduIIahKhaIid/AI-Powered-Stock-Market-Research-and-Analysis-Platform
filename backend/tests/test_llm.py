@@ -306,3 +306,197 @@ async def test_missing_ollama_model_suggests_pull() -> None:
     gateway, _ = gateway_with(error)
     with pytest.raises(LLMError, match="ollama pull qwen3:8b"):
         await gateway.chat([{"role": "user", "content": "x"}])
+
+
+# --- streaming ------------------------------------------------------------------------
+
+from openai.types.chat import ChatCompletionChunk  # noqa: E402
+
+from stock_api.llm import TextDelta  # noqa: E402
+from stock_api.llm.gateway import _ThinkFilter  # noqa: E402
+
+
+def chunk(
+    content: str | None = None,
+    tool_call: dict[str, Any] | None = None,
+    finish: str | None = None,
+    usage: dict[str, int] | None = None,
+) -> ChatCompletionChunk:
+    delta: dict[str, Any] = {}
+    if content is not None:
+        delta["content"] = content
+    if tool_call is not None:
+        delta["tool_calls"] = [tool_call]
+    data: dict[str, Any] = {
+        "id": "c",
+        "object": "chat.completion.chunk",
+        "created": 0,
+        "model": "qwen3:4b",
+        "choices": [] if usage else [{"index": 0, "delta": delta, "finish_reason": finish}],
+    }
+    if usage:
+        data["usage"] = usage
+    return ChatCompletionChunk.model_validate(data)
+
+
+class FakeStream:
+    def __init__(self, chunks: list[ChatCompletionChunk], fail_after: int | None = None) -> None:
+        self.chunks = chunks
+        self.fail_after = fail_after
+
+    def __aiter__(self) -> "FakeStream":
+        self.index = 0
+        return self
+
+    async def __anext__(self) -> ChatCompletionChunk:
+        if self.fail_after is not None and self.index == self.fail_after:
+            raise openai.APIConnectionError(request=REQUEST)
+        if self.index >= len(self.chunks):
+            raise StopAsyncIteration
+        self.index += 1
+        return self.chunks[self.index - 1]
+
+
+async def collect(gateway: LLMGateway, **kwargs: Any) -> tuple[str, Any]:
+    text, final = [], None
+    async for event in gateway.stream_chat([{"role": "user", "content": "x"}], **kwargs):
+        if isinstance(event, TextDelta):
+            text.append(event.text)
+        else:
+            final = event
+    return "".join(text), final
+
+
+async def test_stream_yields_text_and_final_result_without_thinking() -> None:
+    stream = FakeStream(
+        [
+            chunk("<thi"),
+            chunk("nk>private reasoning</th"),
+            chunk("ink>\n\nAAPL closed "),
+            chunk("at 107.1 USD."),
+            chunk(finish="stop"),
+            chunk(usage={"prompt_tokens": 12, "completion_tokens": 8, "total_tokens": 20}),
+        ]
+    )
+    gateway, clients = gateway_with(stream)  # type: ignore[arg-type]
+    text, final = await collect(gateway)
+    assert text == "AAPL closed at 107.1 USD."
+    assert final.content == "AAPL closed at 107.1 USD."
+    assert final.usage.total_tokens == 20
+    assert final.finish_reason == "stop"
+    sent = clients["ollama"].completions.requests[0]
+    assert sent["stream"] is True
+
+
+async def test_stream_accumulates_tool_call_deltas() -> None:
+    stream = FakeStream(
+        [
+            chunk(
+                tool_call={
+                    "index": 0,
+                    "id": "call_1",
+                    "type": "function",
+                    "function": {"name": "get_quote", "arguments": '{"sym'},
+                }
+            ),
+            chunk(tool_call={"index": 0, "function": {"arguments": 'bol": "NVDA"}'}}),
+            chunk(finish="tool_calls"),
+        ]
+    )
+    gateway, _ = gateway_with(stream)  # type: ignore[arg-type]
+    text, final = await collect(gateway, tools=[QUOTE])
+    assert text == ""
+    assert [(c.id, c.name, c.arguments) for c in final.tool_calls] == [
+        ("call_1", "get_quote", {"symbol": "NVDA"})
+    ]
+
+
+async def test_stream_falls_back_when_primary_fails_before_any_text() -> None:
+    gateway, _ = gateway_with(
+        openai.APIConnectionError(request=REQUEST),
+        FakeStream([chunk("from groq"), chunk(finish="stop")]),  # type: ignore[arg-type]
+    )
+    text, final = await collect(gateway)
+    assert text == "from groq"
+    assert final.used_fallback is True
+
+
+async def test_stream_interrupted_after_text_raises() -> None:
+    gateway, _ = gateway_with(
+        FakeStream([chunk("partial"), chunk(" answer")], fail_after=1),  # type: ignore[arg-type]
+        FakeStream([chunk("unused")]),  # type: ignore[arg-type]
+    )
+    with pytest.raises(LLMError, match="stream interrupted"):
+        await collect(gateway)
+
+
+@pytest.mark.parametrize(
+    ("pieces", "expected"),
+    [
+        (["plain ", "text"], "plain text"),
+        (["<think>a</think>b"], "b"),
+        (["x <", "b> y"], "x <b> y"),
+        (["<think>never closed"], ""),
+        (["a<thi", "s is not a tag"], "a<this is not a tag"),
+    ],
+)
+def test_think_filter(pieces: list[str], expected: str) -> None:
+    think = _ThinkFilter()
+    out = "".join(think.feed(piece) for piece in pieces) + think.flush()
+    assert out == expected
+
+
+# --- primary cooldown -----------------------------------------------------------------
+
+QUOTE = mcp_tool_to_openai("get_quote", "Quote", {"properties": {"symbol": {"type": "string"}}})
+
+
+class ScriptedCompletions:
+    """Returns or raises the next scripted outcome on each call."""
+
+    def __init__(self, outcomes: list[ChatCompletion | Exception]) -> None:
+        self.outcomes = outcomes
+        self.calls = 0
+
+    async def create(self, **kwargs: Any) -> ChatCompletion:
+        outcome = self.outcomes[min(self.calls, len(self.outcomes) - 1)]
+        self.calls += 1
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+class ScriptedClient:
+    def __init__(self, outcomes: list[ChatCompletion | Exception]) -> None:
+        self.completions = ScriptedCompletions(outcomes)
+        self.chat = self
+
+
+async def test_failed_primary_is_skipped_during_cooldown_then_retried() -> None:
+    now = [1000.0]
+    primary = ScriptedClient(
+        [openai.APIConnectionError(request=REQUEST), completion("primary back")]
+    )
+    fallback = ScriptedClient([completion("from groq")])
+    clients: dict[str, Any] = {"ollama": primary, "groq": fallback}
+    gateway = LLMGateway(
+        config(),
+        config("groq", "llama"),
+        primary_cooldown_seconds=120,
+        client_factory=lambda c: clients[c.provider],
+        clock=lambda: now[0],
+    )
+    first = await gateway.chat([{"role": "user", "content": "x"}])
+    assert first.provider == "groq"
+    assert gateway.primary_cooling_down
+
+    now[0] += 60
+    second = await gateway.chat([{"role": "user", "content": "x"}])
+    assert second.provider == "groq"
+    assert primary.completions.calls == 1  # primary not tried during cooldown
+
+    now[0] += 61
+    third = await gateway.chat([{"role": "user", "content": "x"}])
+    assert third.content == "primary back"
+    assert third.used_fallback is False
+    assert not gateway.primary_cooling_down

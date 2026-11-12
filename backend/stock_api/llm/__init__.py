@@ -8,6 +8,8 @@ from .gateway import (
     LLMError,
     LLMGateway,
     LLMUnavailableError,
+    StreamEvent,
+    TextDelta,
     ToolCall,
     Usage,
     mcp_tool_to_openai,
@@ -22,6 +24,8 @@ __all__ = [
     "LLMGateway",
     "LLMUnavailableError",
     "ProviderConfig",
+    "StreamEvent",
+    "TextDelta",
     "ToolCall",
     "Usage",
     "build_gateway",
@@ -57,4 +61,5 @@ def build_gateway(settings: Settings) -> LLMGateway:
         fallback,
         timeout=settings.llm_timeout,
         max_retries=settings.llm_max_retries,
+        primary_cooldown_seconds=settings.llm_primary_cooldown_seconds,
     )

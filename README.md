@@ -94,6 +94,39 @@ docker compose exec api python -m stock_api.llm.check
 ```
 
 Every call logs provider, model, tokens, estimated cost (`LLM_PRICE_*`), latency and fallback use.
+After the primary fails as unreachable, the fallback is used first for `LLM_PRIMARY_COOLDOWN_SECONDS`.
+
+## Asking the assistant
+
+`POST /chat` answers a question as a Server-Sent Events stream. The agent reads the question,
+calls the MCP tools it needs (symbol search, quote, price history), and streams the answer.
+
+```json
+{"message": "What is NVIDIA's latest price?", "mode": "simple", "conversation_id": null}
+```
+
+`mode` is `simple` (beginner-friendly) or `detailed`. Send back the `conversation_id` from the
+first event to ask follow-up questions; older turns are summarised automatically.
+
+| Event | Data |
+|---|---|
+| `conversation` | `conversation_id`, `mode` |
+| `status` | `step` the model is working on |
+| `token` | a piece of the answer text |
+| `tool_call` / `tool_result` | tool name, arguments, ok or error, source, as_of, a small preview |
+| `sources` | every data source used, with its as_of date |
+| `done` | full `answer`, `disclaimer`, tool trace, tokens, cost and models used |
+| `error` | `code` (`llm_unavailable`, `llm_error`, `tools_unavailable`) and `message` |
+
+Idle streams get a `: keep-alive` comment every 15 seconds, so slow models do not drop the connection.
+Each question is limited to `AGENT_MAX_STEPS` model calls and `AGENT_MAX_TOOL_CALLS` tool calls.
+
+Try it from the terminal:
+
+```bash
+docker compose exec api python -m stock_api.agent.ask "What is NVIDIA's latest price?"
+docker compose exec api python -m stock_api.agent.ask --detailed "How did AAPL move over the last month?"
+```
 
 ## Running the Python services without Docker (Windows)
 
