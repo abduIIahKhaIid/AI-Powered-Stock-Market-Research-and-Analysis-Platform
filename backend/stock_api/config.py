@@ -53,6 +53,12 @@ class Settings(BaseSettings):
     agent_history_messages: int = 8
     conversation_ttl_seconds: int = 7 * 24 * 3600
     mcp_call_timeout: float = 60.0
+
+    # Background jobs (SCRUM-34): retries, and where large results and files are kept.
+    job_retry_base_seconds: float = 5.0
+    job_retry_max_seconds: float = 120.0
+    job_result_inline_max_bytes: int = 64 * 1024
+    job_results_dir: str = ".data/job-results"
     # Policy (SCRUM-26). Tools needing approval beyond the built-in rules, as JSON list.
     agent_approval_tools: list[str] = []
     approval_timeout_seconds: float = 300.0

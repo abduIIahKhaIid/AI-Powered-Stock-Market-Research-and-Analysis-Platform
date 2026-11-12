@@ -36,7 +36,10 @@ const ANSWER_EVENTS: [string, unknown][] = [
   ["status", { state: "thinking", step: 2 }],
   ["token", { text: "Apple last closed at ", step: 2 }],
   ["token", { text: "**231.5 USD**.", step: 2 }],
-  ["sources", { sources: [{ source: "Yahoo Finance (yfinance)", as_of: "2026-11-11", tool: "get_quote" }] }],
+  [
+    "sources",
+    { sources: [{ source: "Yahoo Finance (yfinance)", as_of: "2026-11-11", tool: "get_quote" }] },
+  ],
   [
     "done",
     {
@@ -63,6 +66,7 @@ function mockApi(chatReplies: (string | Response)[]) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.endsWith("/api/health")) return Response.json(HEALTH);
+    if (url.includes("/api/analyses")) return Response.json([]);
     sent.push(JSON.parse(String(init?.body)) as Sent);
     const reply = chatReplies.shift() ?? "";
     if (reply instanceof Response) return reply;
@@ -117,9 +121,7 @@ describe("Chat screen", () => {
     const sidebar = screen.getByRole("complementary", { name: "Conversations" });
     expect(within(sidebar).getByText("What is Apple's latest stock price?")).toBeInTheDocument();
     await waitFor(() =>
-      expect(window.localStorage.getItem("stock-research.conversations.v1")).toContain(
-        "231.5 USD",
-      ),
+      expect(window.localStorage.getItem("stock-research.conversations.v1")).toContain("231.5 USD"),
     );
   });
 

@@ -10,8 +10,8 @@ from celery import Celery
 from celery.schedules import crontab
 
 from stock_api.config import get_settings
-from stock_api.jobs import Job, JobKind, get_job_store, get_registry
-from stock_api.jobs.runner import execute
+from stock_api.jobs import Job, JobKind, get_job_store, get_registry, get_result_store
+from stock_api.jobs.runner import execute, retry_countdown
 
 settings = get_settings()
 
@@ -45,18 +45,39 @@ def ping() -> str:
     return "pong"
 
 
+def run_attempt(job_id: str) -> Job:
+    return execute(
+        job_id,
+        get_job_store(),
+        get_registry(),
+        get_result_store(),
+        inline_max_bytes=settings.job_result_inline_max_bytes,
+        retry_base=settings.job_retry_base_seconds,
+        retry_cap=settings.job_retry_max_seconds,
+    )
+
+
 @celery_app.task(name="jobs.run")
 def run_job(job_id: str) -> str:
-    return execute(job_id, get_job_store(), get_registry()).status
+    job = run_attempt(job_id)
+    countdown = retry_countdown(job)
+    if countdown is not None:
+        # Same task id, so the job id stays the idempotency key across attempts.
+        enqueue(job, get_registry()[job.kind], countdown=countdown)
+    return job.status
 
 
 @celery_app.task(name="jobs.scheduled")
 def run_scheduled(kind: str) -> str:
     job = get_job_store().create(kind, {})
-    return execute(job.id, get_job_store(), get_registry()).status
+    job = run_attempt(job.id)
+    countdown = retry_countdown(job)
+    if countdown is not None:
+        enqueue(job, get_registry()[job.kind], countdown=countdown)
+    return job.status
 
 
-def enqueue(job: Job, kind: JobKind) -> None:
+def enqueue(job: Job, kind: JobKind, countdown: float | None = None) -> None:
     """Send a job to its queue; the job id is also the Celery task id."""
     celery_app.send_task(
         "jobs.run",
@@ -65,6 +86,7 @@ def enqueue(job: Job, kind: JobKind) -> None:
         queue=kind.queue,
         soft_time_limit=kind.soft_limit,
         time_limit=kind.hard_limit,
+        countdown=countdown,
     )
 
 

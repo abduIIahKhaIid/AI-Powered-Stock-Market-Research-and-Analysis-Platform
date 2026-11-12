@@ -783,6 +783,217 @@ a.source-name {
   }
 }
 
+/* ---------- Saved analyses ---------- */
+
+.saved {
+  max-height: 34%;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+
+.saved-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 6px 4px;
+}
+
+.saved-head h2 {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.saved-refresh {
+  width: 28px;
+  height: 28px;
+  border-color: transparent;
+  background: none;
+  font-size: 15px;
+  color: var(--muted);
+}
+
+.saved-refresh:hover {
+  color: var(--accent);
+}
+
+.saved ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+
+.saved-item {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  text-align: left;
+}
+
+.saved-item:hover {
+  background: #eef0f3;
+}
+
+.saved-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.saved-date {
+  flex: none;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.saved-summary {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.saved-note {
+  margin: 0;
+  padding: 0 6px;
+}
+
+/* ---------- Analysis view ---------- */
+
+.analysis-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.backdrop.analysis-backdrop {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: rgb(16 24 40 / 35%);
+}
+
+.analysis {
+  position: relative;
+  z-index: 1;
+  width: min(100%, 880px);
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 16px 48px rgb(16 24 40 / 22%);
+}
+
+.analysis-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.analysis-head h2 {
+  margin: 0 0 2px;
+  font-size: 18px;
+}
+
+.analysis-head p {
+  margin: 0;
+}
+
+.analysis-files {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+}
+
+.analysis-files a {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.analysis-body {
+  min-height: 0;
+  overflow: auto;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.scan-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.scan-table th,
+.scan-table td {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.scan-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
+.scan-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.scan-bar {
+  display: block;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.scan-error,
+.analysis-error {
+  color: var(--danger);
+}
+
+.analysis-json {
+  margin: 0;
+  padding: 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 12px;
+  white-space: pre-wrap;
+}
+
+.analysis-foot p {
+  margin: 2px 0;
+}
+
 /* ---------- Mobile ---------- */
 
 @media (max-width: 768px) {
@@ -823,6 +1034,14 @@ a.source-name {
 
   .chat-header {
     padding: 10px 12px;
+  }
+
+  .analysis-layer {
+    padding: 8px;
+  }
+
+  .analysis {
+    padding: 16px;
   }
 
   .chat-column {

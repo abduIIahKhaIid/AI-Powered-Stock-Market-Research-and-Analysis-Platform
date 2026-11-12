@@ -1,7 +1,9 @@
-"""analysis_jobs: one row per background job (SCRUM-32, SCRUM-77).
+"""analysis_jobs: one row per background job (SCRUM-32, SCRUM-77, SCRUM-34).
 
 Status moves queued -> running -> succeeded | failed | cancelled; a queued job can also be
-cancelled directly. Progress is 0-100 with a short stage text.
+cancelled directly, and a running job goes back to queued while it waits for a retry.
+Progress is 0-100 with a short stage text. The job id is the idempotency key for running it;
+an optional client idempotency key stops the same request from creating two jobs.
 """
 
 from __future__ import annotations
@@ -17,7 +19,7 @@ Status = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 TERMINAL: frozenset[str] = frozenset({"succeeded", "failed", "cancelled"})
 ALLOWED: dict[str, frozenset[str]] = {
     "queued": frozenset({"running", "cancelled", "failed"}),
-    "running": frozenset({"running", "succeeded", "failed", "cancelled"}),
+    "running": frozenset({"running", "queued", "succeeded", "failed", "cancelled"}),
 }
 
 
@@ -27,6 +29,10 @@ class JobNotFound(KeyError):
 
 class InvalidTransition(ValueError):
     pass
+
+
+class IdempotencyConflict(ValueError):
+    """The idempotency key was already used for a different request."""
 
 
 def _now() -> datetime:
@@ -51,6 +57,13 @@ class Job:
     created_at: datetime = field(default_factory=_now)
     started_at: datetime | None = None
     finished_at: datetime | None = None
+    # When the next attempt starts, while the job waits for a retry.
+    retry_at: datetime | None = None
+    # Downloadable files saved by the job: [{"name", "bytes", "media_type"}].
+    files: list[dict[str, Any]] = field(default_factory=list)
+    # One line for the saved analyses list.
+    summary: str | None = None
+    idempotency_key: str | None = None
 
     @property
     def done(self) -> bool:
@@ -58,7 +71,7 @@ class Job:
 
     def to_dict(self) -> dict[str, Any]:
         data = asdict(self)
-        for key in ("created_at", "started_at", "finished_at"):
+        for key in ("created_at", "started_at", "finished_at", "retry_at"):
             data[key] = data[key].isoformat() if data[key] else None
         return data
 
@@ -75,9 +88,12 @@ class JobStore(Protocol):
         params: dict[str, Any],
         conversation_id: str | None = None,
         max_attempts: int = 3,
+        idempotency_key: str | None = None,
     ) -> Job: ...
 
     def get(self, job_id: str) -> Job: ...
+
+    def find_by_key(self, idempotency_key: str) -> Job | None: ...
 
     def update(self, job_id: str, **changes: Any) -> Job: ...
 
@@ -86,12 +102,31 @@ class JobStore(Protocol):
     ) -> list[Job]: ...
 
 
+def _new(
+    kind: str,
+    params: dict[str, Any],
+    conversation_id: str | None,
+    max_attempts: int,
+    idempotency_key: str | None,
+) -> Job:
+    return Job(
+        uuid.uuid4().hex,
+        kind,
+        params,
+        conversation_id,
+        max_attempts=max_attempts,
+        idempotency_key=idempotency_key,
+    )
+
+
 def _apply(job: Job, changes: dict[str, Any]) -> Job:
     status = changes.get("status")
     if status is not None:
         check_transition(job, status)
-        if status == "running" and job.started_at is None:
-            changes.setdefault("started_at", _now())
+        if status == "running":
+            changes.setdefault("retry_at", None)
+            if job.started_at is None:
+                changes.setdefault("started_at", _now())
         if status in TERMINAL:
             changes.setdefault("finished_at", _now())
     if "progress" in changes:
@@ -112,11 +147,22 @@ class MemoryJobStore:
         params: dict[str, Any],
         conversation_id: str | None = None,
         max_attempts: int = 3,
+        idempotency_key: str | None = None,
     ) -> Job:
-        job = Job(uuid.uuid4().hex, kind, params, conversation_id, max_attempts=max_attempts)
         with self._lock:
+            if idempotency_key is not None:
+                existing = self.find_by_key(idempotency_key)
+                if existing is not None:
+                    return existing
+            job = _new(kind, params, conversation_id, max_attempts, idempotency_key)
             self._jobs[job.id] = job
         return job
+
+    def find_by_key(self, idempotency_key: str) -> Job | None:
+        for job in self._jobs.values():
+            if job.idempotency_key == idempotency_key:
+                return job
+        return None
 
     def get(self, job_id: str) -> Job:
         try:
@@ -164,13 +210,22 @@ CREATE TABLE IF NOT EXISTS analysis_jobs (
 CREATE INDEX IF NOT EXISTS analysis_jobs_conversation
     ON analysis_jobs (conversation_id, created_at);
 CREATE INDEX IF NOT EXISTS analysis_jobs_status ON analysis_jobs (status, created_at);
+-- SCRUM-34: retries, saved files and idempotency keys.
+ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS retry_at TIMESTAMPTZ;
+ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS files JSONB NOT NULL DEFAULT '[]';
+ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS summary TEXT;
+ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS analysis_jobs_idempotency_key
+    ON analysis_jobs (idempotency_key) WHERE idempotency_key IS NOT NULL;
 """
 
 COLUMNS = (
     "id, kind, params, conversation_id, status, progress, stage, attempts, max_attempts, error, "
-    "result, result_path, cancel_requested, created_at, started_at, finished_at"
+    "result, result_path, cancel_requested, created_at, started_at, finished_at, retry_at, files, "
+    "summary, idempotency_key"
 )
-JSON_FIELDS = {"params", "result"}
+COLUMN_NAMES = COLUMNS.split(", ")
+JSON_FIELDS = {"params", "result", "files"}
 
 
 class PostgresJobStore:
@@ -193,7 +248,7 @@ class PostgresJobStore:
 
     @staticmethod
     def _row(row: dict[str, Any]) -> Job:
-        return Job(**row)
+        return Job(**(row | {"files": row.get("files") or []}))
 
     def create(
         self,
@@ -201,18 +256,34 @@ class PostgresJobStore:
         params: dict[str, Any],
         conversation_id: str | None = None,
         max_attempts: int = 3,
+        idempotency_key: str | None = None,
     ) -> Job:
-        job = Job(uuid.uuid4().hex, kind, params, conversation_id, max_attempts=max_attempts)
-        values = job.to_dict() | {"created_at": job.created_at}
+        job = _new(kind, params, conversation_id, max_attempts, idempotency_key)
+        values = [
+            json.dumps(getattr(job, c), default=str) if c in JSON_FIELDS else getattr(job, c)
+            for c in COLUMN_NAMES
+        ]
+        placeholders = ", ".join(["%s"] * len(COLUMN_NAMES))
         with self._connect() as conn:
-            conn.execute(
-                f"INSERT INTO analysis_jobs ({COLUMNS}) VALUES ({', '.join(['%s'] * 16)})",
-                [
-                    json.dumps(values[c]) if c in JSON_FIELDS else values[c]
-                    for c in COLUMNS.split(", ")
-                ],
-            )
+            row = conn.execute(
+                f"INSERT INTO analysis_jobs ({COLUMNS}) VALUES ({placeholders}) "
+                "ON CONFLICT DO NOTHING RETURNING id",
+                values,
+            ).fetchone()
+        if row is None and idempotency_key is not None:
+            # Another request with the same key won the race; return its job.
+            existing = self.find_by_key(idempotency_key)
+            if existing is not None:
+                return existing
         return job
+
+    def find_by_key(self, idempotency_key: str) -> Job | None:
+        with self._connect() as conn:
+            row = conn.execute(
+                f"SELECT {COLUMNS} FROM analysis_jobs WHERE idempotency_key = %s",
+                (idempotency_key,),
+            ).fetchone()
+        return None if row is None else self._row(row)
 
     def get(self, job_id: str) -> Job:
         with self._connect() as conn:
@@ -232,7 +303,7 @@ class PostgresJobStore:
                 raise JobNotFound(job_id)
             current = self._row(row)
             job = _apply(current, dict(changes))
-            fields = [c for c in COLUMNS.split(", ") if getattr(job, c) != getattr(current, c)]
+            fields = [c for c in COLUMN_NAMES if getattr(job, c) != getattr(current, c)]
             if fields:
                 conn.execute(
                     f"UPDATE analysis_jobs SET {', '.join(f'{c} = %s' for c in fields)} "

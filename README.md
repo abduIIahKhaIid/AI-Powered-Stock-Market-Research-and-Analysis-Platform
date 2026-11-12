@@ -164,9 +164,22 @@ stream sends `approval_required`, the UI shows a card, and `POST /approvals/{id}
 | `GET /jobs/{id}` | Status, progress, stage, result or error |
 | `POST /jobs/{id}/cancel` | Cancel a queued job, or stop a running one at its next step |
 | `GET /jobs?conversation_id=&status=` | List jobs |
+| `GET /jobs/{id}/result` | Full result of a finished job, also when it was stored in a file |
+| `GET /jobs/{id}/files/{name}` | Download a file the job saved, such as `indicator_scan.csv` |
+| `GET /analyses` | Saved analyses: finished jobs with a title and a one-line summary |
 
 Job kinds: `indicator_scan` (indicators for up to 10 symbols, 120 s soft / 150 s hard limit) and
 `refresh_directory` (run daily by Celery Beat on the `ingest` queue).
+
+**Retries and saved results.** Provider, network and rate-limit errors are retried with
+exponential backoff (5 s, then 10 s; at most 3 attempts). While a job waits, its stage reads
+`Retrying 2 of 3 in 5 s`. Any other error fails the job at once. The job id is the idempotency
+key: a finished job never runs again, and each retry starts by removing the files the last
+attempt left, so results are never duplicated. Send an `Idempotency-Key` header with
+`POST /jobs` and a repeated request returns the first job instead of queuing a second one.
+Results up to 64 KB are kept in the job row (JSONB). Larger results and CSV files go to
+`JOB_RESULTS_DIR`, a Docker volume (`jobresults`) shared by the API and the worker, so they are
+still there after a restart. In production an S3 bucket can take the volume's place.
 
 Try it from the terminal:
 
@@ -189,6 +202,9 @@ Open http://localhost:5173 and ask a question, or pick one of the starter prompt
 - **Conversations.** The sidebar lists your chats; they are kept in this browser
   (`localStorage`), and follow-up questions reuse the API's `conversation_id`. On narrow screens
   the sidebar opens from the menu button.
+- **Saved analyses.** Finished background scans are listed in the sidebar (`GET /api/analyses`).
+  Opening one shows its result table, the CSV download and the data source. These are kept on
+  the server, so they are still there after a restart or on another browser.
 
 The dev server forwards `/api/*` to the API (`VITE_API_PROXY_TARGET`, default
 `http://localhost:8000`).
