@@ -115,8 +115,15 @@ first event to ask follow-up questions; older turns are summarised automatically
 | `token` | a piece of the answer text |
 | `tool_call` / `tool_result` | tool name, arguments, ok or error, source, as_of, a small preview |
 | `sources` | every data source used, with its as_of date |
-| `done` | full `answer`, `disclaimer`, tool trace, tokens, cost and models used |
+| `grounding` | `fixing` while figures that did not match the data are corrected, `removed` if any were dropped |
+| `done` | full `answer`, `disclaimer`, `assumptions`, `grounding` report, tool trace, tokens, cost and models used |
 | `error` | `code` (`llm_unavailable`, `llm_error`, `tools_unavailable`) and `message` |
+
+Every figure in an answer is checked against the data the tools returned (with the rounding its
+precision allows, plus simple calculations such as change and percent change). Figures that do not
+match go back to the model to fix, up to two times; any that still fail are removed and the
+`grounding.note` says which. Answers about projections or what-if scenarios list their
+assumptions and get an extra line in the disclaimer.
 
 Idle streams get a `: keep-alive` comment every 15 seconds, so slow models do not drop the connection.
 Each question is limited to `AGENT_MAX_STEPS` model calls and `AGENT_MAX_TOOL_CALLS` tool calls.

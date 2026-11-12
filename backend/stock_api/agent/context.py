@@ -56,6 +56,10 @@ def system_prompt(mode: Mode, today: date | None = None) -> str:
             "Roman Urdu; keep tickers, numbers and finance terms as they are.",
             "8. Copy figures exactly as the tools return them. If you calculate something "
             "(a change or a percentage), show the inputs and the formula.",
+            "9. Say which trading day a price is from. Call it today's price only when its "
+            "as_of date is today.",
+            "10. For projections, scenarios or what-if questions, list every assumption under "
+            "a heading named Assumptions.",
             "",
             _MODE_RULES[mode],
         ]

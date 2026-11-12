@@ -1,5 +1,5 @@
 import { formatAsOf, toolLabel } from "../chat/tools";
-import type { AssistantMessage, ChatMessage, Source } from "../chat/types";
+import type { AssistantMessage, ChatMessage, Grounding, Source } from "../chat/types";
 import Markdown from "./Markdown";
 import ToolTimeline from "./ToolTimeline";
 
@@ -10,7 +10,18 @@ function SourceList({ sources }: { sources: Source[] }) {
       <ul>
         {sources.map((source) => (
           <li key={`${source.source}|${source.as_of ?? ""}|${source.tool}`}>
-            <span className="source-name">{source.source}</span>
+            {source.link ? (
+              <a
+                className="source-name"
+                href={source.link}
+                target="_blank"
+                rel="noopener noreferrer"
+              >
+                {source.source}
+              </a>
+            ) : (
+              <span className="source-name">{source.source}</span>
+            )}
             {source.as_of && (
               <span className="source-meta"> · as of {formatAsOf(source.as_of)}</span>
             )}
@@ -20,6 +31,44 @@ function SourceList({ sources }: { sources: Source[] }) {
       </ul>
     </section>
   );
+}
+
+function AssumptionList({ items }: { items: string[] }) {
+  return (
+    <section className="sources assumptions" aria-label="Assumptions">
+      <h3>Assumptions</h3>
+      <ul>
+        {items.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** One line saying whether the figures in the answer matched the source data. */
+export function GroundingNote({ grounding }: { grounding: Grounding }) {
+  const count = grounding.checked;
+  const figures = `${count} figure${count === 1 ? "" : "s"}`;
+  switch (grounding.status) {
+    case "verified":
+      return <p className="grounding ok">Checked: {figures} match the source data.</p>;
+    case "corrected":
+      return (
+        <p className="grounding ok">
+          Checked: {figures} match the source data after the assistant corrected{" "}
+          {grounding.flagged?.join(", ") || "a figure"}.
+        </p>
+      );
+    case "removed":
+      return (
+        <p className="grounding warn" role="note">
+          {grounding.note ?? "Some figures could not be matched to the source data and were removed."}
+        </p>
+      );
+    default:
+      return null;
+  }
 }
 
 function Assistant({ message }: { message: AssistantMessage }) {
@@ -52,7 +101,13 @@ function Assistant({ message }: { message: AssistantMessage }) {
       )}
       {message.state === "stopped" && <p className="muted small">Stopped before finishing.</p>}
 
+      {message.grounding && message.state === "done" && (
+        <GroundingNote grounding={message.grounding} />
+      )}
       {message.sources.length > 0 && <SourceList sources={message.sources} />}
+      {message.assumptions && message.assumptions.length > 0 && (
+        <AssumptionList items={message.assumptions} />
+      )}
       {message.disclaimer && <p className="disclaimer">{message.disclaimer}</p>}
       {message.state === "done" && (
         <p className="message-meta">

@@ -114,3 +114,41 @@ describe("tool helpers", () => {
     );
   });
 });
+
+describe("grounding events", () => {
+  it("shows a checking status while figures are corrected, then stores the report", () => {
+    const fixing = run([
+      toolCall,
+      toolResult,
+      { type: "token", data: { text: "NVDA rose 9.9%.", step: 2 } },
+      { type: "grounding", data: { state: "fixing", attempt: 1, unverified: ["9.9%"] } },
+    ]);
+    expect(fixing.statusText).toBe("Checking the figures against the data…");
+
+    const done = applyEvent(
+      applyEvent(fixing, { type: "token", data: { text: "NVDA rose 2.0%.", step: 3 } }),
+      {
+        type: "done",
+        data: {
+          conversation_id: "c",
+          answer: "NVDA rose 2.0%.",
+          disclaimer: "Educational only.",
+          assumptions: ["Growth 5% a year"],
+          grounding: { status: "corrected", checked: 1, attempts: 1, flagged: ["9.9%"] },
+          usage: {
+            prompt_tokens: 1,
+            completion_tokens: 1,
+            cost_usd: 0,
+            llm_calls: 3,
+            tool_calls: 1,
+            models: ["m"],
+            used_fallback: false,
+          },
+        },
+      },
+    );
+    expect(done.text).toBe("NVDA rose 2.0%.");
+    expect(done.assumptions).toEqual(["Growth 5% a year"]);
+    expect(done.grounding?.status).toBe("corrected");
+  });
+});
