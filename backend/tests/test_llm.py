@@ -287,3 +287,22 @@ async def test_unreachable_without_fallback_raises_unavailable() -> None:
     gateway, _ = gateway_with(openai.APIConnectionError(request=REQUEST))
     with pytest.raises(LLMUnavailableError):
         await gateway.chat([{"role": "user", "content": "x"}])
+
+
+async def test_ollama_403_explains_host_header_fix() -> None:
+    error = openai.PermissionDeniedError(
+        "Error code: 403", response=httpx2.Response(403, request=REQUEST), body=None
+    )
+    gateway, clients = gateway_with(error, completion("unused"))
+    with pytest.raises(LLMError, match="OLLAMA_HOST=0.0.0.0"):
+        await gateway.chat([{"role": "user", "content": "x"}])
+    assert clients["groq"].completions.requests == []
+
+
+async def test_missing_ollama_model_suggests_pull() -> None:
+    error = openai.NotFoundError(
+        "model 'qwen3:8b' not found", response=httpx2.Response(404, request=REQUEST), body=None
+    )
+    gateway, _ = gateway_with(error)
+    with pytest.raises(LLMError, match="ollama pull qwen3:8b"):
+        await gateway.chat([{"role": "user", "content": "x"}])

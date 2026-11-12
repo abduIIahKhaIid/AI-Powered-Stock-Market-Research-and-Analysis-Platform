@@ -130,6 +130,21 @@ def _is_unavailable(exc: Exception) -> bool:
     return False
 
 
+def _hint(config: ProviderConfig, exc: Exception) -> str:
+    """A next step for common setup mistakes, appended to the error message."""
+    status = getattr(exc, "status_code", None)
+    if config.provider == "ollama" and status == 403:
+        return (
+            ". Ollama rejected the request's Host header: start it with "
+            "OLLAMA_HOST=0.0.0.0:11434, or run ngrok with --host-header=localhost:11434"
+        )
+    if config.provider == "ollama" and status == 404 and "not found" in str(exc).lower():
+        return f". Pull the model first: ollama pull {config.model}"
+    if status == 401:
+        return ". Check the API key for this provider"
+    return ""
+
+
 def mcp_tool_to_openai(name: str, description: str | None, input_schema: dict[str, Any]) -> dict:
     """Convert an MCP tool definition into the OpenAI `tools` format."""
     schema = dict(input_schema or {})
@@ -196,7 +211,9 @@ class LLMGateway:
                     unavailable,
                 )
                 if not unavailable:
-                    raise LLMError(f"{config.label}: {type(exc).__name__}: {exc}") from exc
+                    raise LLMError(
+                        f"{config.label}: {type(exc).__name__}: {exc}{_hint(config, exc)}"
+                    ) from exc
         raise LLMUnavailableError(
             f"No LLM provider could be reached ({', '.join(c.label for c in configs)}): "
             f"{type(last_error).__name__}"
