@@ -59,6 +59,8 @@ class Settings(BaseSettings):
     job_retry_max_seconds: float = 120.0
     job_result_inline_max_bytes: int = 64 * 1024
     job_results_dir: str = ".data/job-results"
+    # Let the agent start background jobs from the chat (each one needs the user's approval).
+    agent_jobs_enabled: bool = True
     # Policy (SCRUM-26). Tools needing approval beyond the built-in rules, as JSON list.
     agent_approval_tools: list[str] = []
     approval_timeout_seconds: float = 300.0

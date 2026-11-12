@@ -1,7 +1,15 @@
 /** Turns the streamed chat events into the state of one assistant message. */
 
 import { toolLabel } from "./tools";
-import type { AssistantMessage, ChatEvent, Mode, ToolStep } from "./types";
+import type {
+  AssistantMessage,
+  ChatEvent,
+  JobDoneData,
+  JobItem,
+  JobProgressData,
+  Mode,
+  ToolStep,
+} from "./types";
 
 export function newAssistantMessage(id: string, mode: Mode): AssistantMessage {
   return {
@@ -121,6 +129,20 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
       return { ...message, charts: [...others, chart] };
     }
 
+    case "job_started": {
+      const { job_id, kind, title } = event.data;
+      if (message.jobs?.some((job) => job.id === job_id)) return message;
+      const job: JobItem = {
+        id: job_id,
+        kind,
+        title: title || kind,
+        status: "queued",
+        progress: 0,
+        stage: "Waiting for a worker",
+      };
+      return { ...message, jobs: [...(message.jobs ?? []), job] };
+    }
+
     case "sources":
       return { ...message, sources: event.data.sources ?? [] };
 
@@ -163,4 +185,38 @@ export function finishMessage(
   );
   if (outcome === "stopped") return { ...message, state: "stopped", statusText: undefined, tools };
   return { ...message, state: "error", error: outcome, statusText: undefined, tools };
+}
+
+export const ACTIVE_JOB = new Set(["queued", "running"]);
+
+/** Jobs whose final summary still has to arrive; their progress streams stay open. */
+export function jobNeedsWatching(job: JobItem): boolean {
+  return ACTIVE_JOB.has(job.status) || !job.reported;
+}
+
+export function applyJobProgress(job: JobItem, data: JobProgressData): JobItem {
+  return {
+    ...job,
+    title: data.title ?? job.title,
+    status: data.status,
+    progress: data.progress,
+    stage: data.stage,
+    error: data.error,
+  };
+}
+
+/** The assistant message that reports a finished job in the chat. */
+export function jobReportMessage(id: string, mode: Mode, done: JobDoneData): AssistantMessage {
+  return {
+    id,
+    role: "assistant",
+    mode,
+    state: "done",
+    text: done.report,
+    textStep: 0,
+    tools: [],
+    sources: [],
+    disclaimer: done.status === "succeeded" ? done.disclaimer : undefined,
+    reportFor: done.id,
+  };
 }

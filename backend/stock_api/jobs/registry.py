@@ -119,6 +119,8 @@ class JobKind:
     max_attempts: int = 3
     # One line for the saved analyses list, from the params and the result.
     summarize: Callable[[dict[str, Any], Any], str] | None = None
+    # Markdown posted in the chat when the job finishes, from the params and the result.
+    report: Callable[[dict[str, Any], Any], str] | None = None
 
 
 def mcp_tool_runner(server: Any, timeout: float = 60.0) -> ToolRunner:
@@ -227,6 +229,46 @@ def scan_csv(rows: dict[str, Any]) -> str:
     return out.getvalue()
 
 
+def _value(value: Any) -> str:
+    if isinstance(value, float):
+        return f"{value:,.2f}"
+    return "n/a" if value is None else str(value)
+
+
+def report_scan(params: dict[str, Any], result: Any) -> str:
+    """Figures copied from the scan result, one line per symbol."""
+    lines = [
+        f"**Indicator scan finished** for {', '.join(result['symbols'])} "
+        f"(period {result['period']})."
+    ]
+    for symbol, row in result["rows"].items():
+        if "error" in row:
+            lines.append(f"- **{symbol}**: {row['error']}")
+            continue
+        values = []
+        for indicator, series in row["latest"].items():
+            if len(series) == 1:
+                values.append(f"{indicator} {_value(next(iter(series.values())))}")
+            else:
+                parts = ", ".join(f"{name} {_value(v)}" for name, v in series.items())
+                values.append(f"{indicator} ({parts})")
+        line = (
+            f"- **{symbol}**: last close {_value(row['last_close'])} on {row['last_bar'][:10]}; "
+            + "; ".join(values)
+        )
+        if row.get("signals"):
+            line += ". Signals: " + "; ".join(row["signals"])
+        lines.append(line + ".")
+    sources = "; ".join(
+        f"{s['source']}, as of {str(s['as_of'])[:10]}" if s.get("as_of") else s["source"]
+        for s in result.get("sources", [])
+    )
+    if sources:
+        lines.append(f"\nSource: {sources}.")
+    lines.append("The full table and the CSV file are under Saved analyses.")
+    return "\n".join(lines)
+
+
 def summarize_scan(params: dict[str, Any], result: Any) -> str:
     names = ", ".join(params["indicators"])
     return f"{names} for {', '.join(params['symbols'])} ({params['period']})"
@@ -258,6 +300,7 @@ def build_registry(runner: ToolRunner) -> dict[str, JobKind]:
             validate=validate_scan,
             handler=indicator_scan(runner),
             summarize=summarize_scan,
+            report=report_scan,
         ),
         JobKind(
             "refresh_directory",

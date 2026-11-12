@@ -57,6 +57,47 @@ export interface Grounding {
   note?: string | null;
 }
 
+export type JobStatus = "queued" | "running" | "succeeded" | "failed" | "cancelled";
+
+/** A background job started from this answer (SCRUM-33). */
+export interface JobItem {
+  id: string;
+  kind: string;
+  title: string;
+  status: JobStatus;
+  progress: number;
+  stage: string;
+  error?: string | null;
+  /** True once the summary of the finished job has been posted in the chat. */
+  reported?: boolean;
+}
+
+/** `job_progress` events from GET /jobs/{id}/events. */
+export interface JobProgressData {
+  id: string;
+  kind: string;
+  title?: string;
+  status: JobStatus;
+  progress: number;
+  stage: string;
+  attempts: number;
+  max_attempts: number;
+  error: string | null;
+  retry_at: string | null;
+}
+
+/** The final `job_done` event: what to post in the chat. */
+export interface JobDoneData {
+  id: string;
+  kind: string;
+  title: string;
+  status: JobStatus;
+  summary: string | null;
+  report: string;
+  error: string | null;
+  disclaimer?: string;
+}
+
 export interface Usage {
   prompt_tokens: number;
   completion_tokens: number;
@@ -92,6 +133,10 @@ export type ChatEvent =
     }
   | { type: "sources"; data: { sources: Source[] } }
   | { type: "chart"; data: ChartSpec }
+  | {
+      type: "job_started";
+      data: { job_id: string; kind: string; title: string; conversation_id: string };
+    }
   | {
       type: "approval_required";
       data: {
@@ -170,6 +215,9 @@ export interface AssistantMessage {
   grounding?: Grounding;
   charts?: ChartSpec[];
   approvals?: ApprovalItem[];
+  jobs?: JobItem[];
+  /** Set on the message that reports a finished background job. */
+  reportFor?: string;
   usage?: Usage;
   error?: { code: string; message: string };
 }

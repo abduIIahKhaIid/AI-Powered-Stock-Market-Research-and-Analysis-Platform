@@ -181,6 +181,18 @@ Results up to 64 KB are kept in the job row (JSONB). Larger results and CSV file
 `JOB_RESULTS_DIR`, a Docker volume (`jobresults`) shared by the API and the worker, so they are
 still there after a restart. In production an S3 bucket can take the volume's place.
 
+**Live progress.** Every change to a job is published on the Redis pub/sub channel `job:{id}`.
+`GET /jobs/{id}/events` relays it as Server-Sent Events: `job_progress` (status, progress,
+stage) for every change, then one `job_done` event with a summary to post in the chat. The
+stream re-reads the job row every 5 s, so a missed message never leaves it waiting.
+
+**Jobs from the chat.** Asked to scan three or more symbols, the agent calls
+`start_job_indicator_scan` (up to 10 symbols). Like every `start_job*` tool, this needs your
+approval first. The answer then shows a progress bar with the current stage and a Cancel
+button, and you can keep chatting. When the job finishes, its summary is posted in the chat and
+added to the conversation history, so follow-up questions can use it. Set
+`AGENT_JOBS_ENABLED=false` to hide the tool.
+
 Try it from the terminal:
 
 ```bash
@@ -202,6 +214,8 @@ Open http://localhost:5173 and ask a question, or pick one of the starter prompt
 - **Conversations.** The sidebar lists your chats; they are kept in this browser
   (`localStorage`), and follow-up questions reuse the API's `conversation_id`. On narrow screens
   the sidebar opens from the menu button.
+- **Background jobs.** A scan started from the chat shows a live progress bar under the answer
+  and its summary arrives as a new message when it finishes, also after a page reload.
 - **Saved analyses.** Finished background scans are listed in the sidebar (`GET /api/analyses`).
   Opening one shows its result table, the CSV download and the data source. These are kept on
   the server, so they are still there after a restart or on another browser.

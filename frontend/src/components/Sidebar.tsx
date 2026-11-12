@@ -12,6 +12,7 @@ interface Props {
   onDelete: (id: string) => void;
   onClose: () => void;
   onOpenAnalysis: (analysis: SavedAnalysis) => void;
+  analysesKey?: number;
 }
 
 function shortDate(timestamp: number): string {
@@ -24,8 +25,7 @@ function shortDate(timestamp: number): string {
 }
 
 export default function Sidebar(props: Props) {
-  const { conversations, activeId, open, onSelect, onNew, onDelete, onClose, onOpenAnalysis } =
-    props;
+  const { conversations, activeId, open, onSelect, onNew, onDelete, onClose } = props;
   return (
     <>
       <aside className={`sidebar ${open ? "open" : ""}`} aria-label="Conversations">
@@ -79,7 +79,7 @@ export default function Sidebar(props: Props) {
           )}
         </nav>
 
-        <SavedAnalyses onOpen={onOpenAnalysis} />
+        <SavedAnalyses onOpen={props.onOpenAnalysis} refreshKey={props.analysesKey} />
 
         <footer className="sidebar-foot">
           <HealthBadge />
