@@ -120,7 +120,9 @@ first event to ask follow-up questions; older turns are summarised automatically
 | `error` | `code` (`llm_unavailable`, `llm_error`, `tools_unavailable`) and `message` |
 
 Every figure in an answer is checked against the data the tools returned (with the rounding its
-precision allows, plus simple calculations such as change and percent change). Figures that do not
+precision allows, plus simple calculations such as change, percent change, totals, averages and
+growth at a rate the user or the answer's assumptions state). A calculation written in the answer
+(`173.73 × 1.10 = 191.10`) counts when its arithmetic is right and every input is supported. Figures that do not
 match go back to the model to fix, up to two times; any that still fail are removed and the
 `grounding.note` says which. Answers about projections or what-if scenarios list their
 assumptions and get an extra line in the disclaimer.
