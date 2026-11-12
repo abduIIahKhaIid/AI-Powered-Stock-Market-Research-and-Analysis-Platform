@@ -4,7 +4,16 @@ from __future__ import annotations
 
 from typing import Any
 
-CHART_TOOLS = {"get_price_history"}
+CHART_TOOLS = {"get_price_history", "compute_indicators"}
+
+# Indicator keys from compute_indicators that the chart can draw, mapped to its toggles.
+CHART_TOGGLES = {
+    "sma_20": "sma20",
+    "sma_50": "sma50",
+    "bollinger_20": "bollinger",
+    "rsi_14": "rsi",
+    "macd": "macd",
+}
 
 
 def chart_from_tool(name: str, payload: Any) -> dict[str, Any] | None:
@@ -27,4 +36,7 @@ def chart_from_tool(name: str, payload: Any) -> dict[str, Any] | None:
         "candles": candles,
         "source": payload.get("source"),
         "as_of": payload.get("as_of"),
+        "indicators": [
+            CHART_TOGGLES[key] for key in (data.get("indicators") or {}) if key in CHART_TOGGLES
+        ],
     }

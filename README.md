@@ -53,6 +53,7 @@ The Financial Analysis MCP server (`http://localhost:8100/mcp`) currently offers
 | `search_symbol(query, limit)` | NASDAQ-listed securities matching a ticker or company name |
 | `get_quote(symbol)` | Latest daily price, open, high, low, volume, previous close and change |
 | `get_price_history(symbol, period, interval)` | OHLCV candles (period `5d`…`max`, interval `5m`…`1mo`) |
+| `compute_indicators(symbol, indicators, period, interval)` | SMA, EMA, RSI, MACD, Bollinger Bands, ATR, VWAP: latest and recent values, factual signals, beginner explanations |
 | `ping()` | Connectivity check |
 
 Every tool returns `{data, source, as_of, units}` and rejects symbols that are not NASDAQ-listed.

@@ -84,6 +84,15 @@ describe("PriceChart", () => {
     expect(screen.getByRole("button", { name: "RSI 14" })).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("switches on the indicators the model asked for", () => {
+    render(<PriceChart spec={{ ...spec, indicators: ["rsi", "macd", "unknown"] }} />);
+    expect(screen.getByRole("button", { name: "RSI 14" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "MACD" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "SMA 20" })).toHaveAttribute("aria-pressed", "false");
+    const panes = lastChart().series.map(([type, pane]) => `${type}@${pane}`);
+    expect(panes).toContain("Line@1");
+  });
+
   it("loads another period and shows errors from the API", async () => {
     const fetchPrices = vi
       .fn()

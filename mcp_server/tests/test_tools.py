@@ -19,7 +19,13 @@ def payload(result: Any) -> dict[str, Any]:
 
 async def test_tools_are_registered() -> None:
     names = {tool.name for tool in await mcp.list_tools()}
-    assert {"ping", "search_symbol", "get_quote", "get_price_history"} <= names
+    assert {
+        "ping",
+        "search_symbol",
+        "get_quote",
+        "get_price_history",
+        "compute_indicators",
+    } <= names
 
 
 @pytest.mark.parametrize(
