@@ -78,7 +78,12 @@ async function defaultFetchPrices(symbol: string, period: string, interval: stri
 
 export default function PriceChart({ spec: initial, fetchPrices = defaultFetchPrices }: Props) {
   const [spec, setSpec] = useState(initial);
-  const [shown, setShown] = useState<Set<Indicator>>(new Set(["sma20"]));
+  const [shown, setShown] = useState<Set<Indicator>>(() => {
+    const requested = (initial.indicators ?? []).filter((key): key is Indicator =>
+      INDICATORS.some((indicator) => indicator.key === key),
+    );
+    return new Set<Indicator>(requested.length ? requested : ["sma20"]);
+  });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const container = useRef<HTMLDivElement>(null);

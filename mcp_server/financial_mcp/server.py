@@ -7,6 +7,7 @@ Run locally:  python -m financial_mcp.server   (listens on MCP_HOST:MCP_PORT, pa
 """
 
 import os
+from datetime import date
 from typing import Any
 
 import uvicorn
@@ -18,6 +19,14 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 from financial_mcp.envelope import envelope
+from financial_mcp.indicators import (
+    EXPLANATIONS,
+    LOOKBACK_PERIOD,
+    IndicatorError,
+    analyse,
+    parse_indicator,
+    period_start,
+)
 from financial_mcp.market_data import (
     MAX_CANDLES,
     PriceDataError,
@@ -34,7 +43,7 @@ from financial_mcp.symbols import (
 )
 
 SERVER_NAME = "financial-analysis"
-SERVER_VERSION = "0.2.0"
+SERVER_VERSION = "0.3.0"
 
 mcp = MCPServer(
     name=SERVER_NAME,
@@ -141,6 +150,66 @@ def get_price_history(symbol: str, period: str = "6mo", interval: str = "1d") ->
         source=services.prices.source,
         as_of=candles[-1].time,
         units=PRICE_UNITS,
+    )
+
+
+MAX_INDICATORS = 8
+DAILY_OR_LONGER = ("1d", "1wk", "1mo")
+
+
+@mcp.tool(
+    description=(
+        "Technical indicators for a NASDAQ symbol, computed on real price candles: "
+        "sma, ema, rsi, macd, bollinger, atr, vwap. Add a window with an underscore, e.g. "
+        "['sma_50', 'rsi_14', 'macd']. Returns the latest value and the last 30 values of "
+        "each, factual signals (e.g. RSI above 70) and a plain-language explanation of each "
+        "indicator for beginners. period and interval as in get_price_history."
+    )
+)
+def compute_indicators(
+    symbol: str,
+    indicators: list[str] | None = None,
+    period: str = "6mo",
+    interval: str = "1d",
+) -> dict[str, Any]:
+    listing = _require_listing(symbol)
+    try:
+        validate_period_interval(period, interval)
+        requested = indicators or ["sma_20", "rsi_14", "macd"]
+        if len(requested) > MAX_INDICATORS:
+            raise IndicatorError(f"Ask for at most {MAX_INDICATORS} indicators at a time.")
+        specs = list({spec.key: spec for spec in map(parse_indicator, requested)}.values())
+    except ValueError as exc:
+        raise ToolError(str(exc)) from exc
+
+    # Fetch extra history so long windows (e.g. SMA 200) are warmed up for the period shown.
+    extended = interval in DAILY_OR_LONGER and period in LOOKBACK_PERIOD
+    fetch_period = LOOKBACK_PERIOD[period] if extended else period
+    services = get_services()
+    try:
+        candles = services.prices.history(listing["symbol"], period=fetch_period, interval=interval)
+    except PriceDataError as exc:
+        raise ToolError(str(exc)) from exc
+    if not candles:
+        raise ToolError(f"No price data returned for {listing['symbol']}.")
+    start = period_start(period, date.fromisoformat(candles[-1].time[:10])) if extended else None
+    try:
+        analysis = analyse(candles, specs, start)
+    except IndicatorError as exc:
+        raise ToolError(str(exc)) from exc
+    return envelope(
+        {
+            "symbol": listing["symbol"],
+            "name": listing["name"],
+            "period": period,
+            "interval": interval,
+            "adjusted": False,
+            **analysis,
+            "explanations": {spec.kind: EXPLANATIONS[spec.kind] for spec in specs},
+        },
+        source=services.prices.source,
+        as_of=analysis["last_bar"],
+        units={"prices": "USD", "rsi": "0-100", "atr": "USD", "volume": "shares"},
     )
 
 

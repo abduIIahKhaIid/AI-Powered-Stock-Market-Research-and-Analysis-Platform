@@ -55,6 +55,7 @@ async def test_agent_sends_a_chart_after_price_history() -> None:
     }
     assert chart["source"] == "Fake price source (tests)"
     assert chart["adjusted"] is False
+    assert chart["indicators"] == []
 
 
 async def test_quote_does_not_make_a_chart() -> None:
@@ -113,3 +114,19 @@ async def test_prices_endpoint_reports_unreachable_service() -> None:
     finally:
         app.dependency_overrides.clear()
     assert response.status_code == 502
+
+
+def test_indicator_results_turn_on_matching_chart_toggles() -> None:
+    payload = {
+        "data": {
+            "symbol": "AAPL",
+            "period": "6mo",
+            "interval": "1d",
+            "candles": [{"time": "2026-11-11", "close": 1}],
+            "indicators": {"sma_50": {}, "rsi_14": {}, "atr_14": {}, "macd": {}},
+        },
+        "source": "s",
+    }
+    spec = chart_from_tool("compute_indicators", payload)
+    assert spec is not None
+    assert spec["indicators"] == ["sma50", "rsi", "macd"]

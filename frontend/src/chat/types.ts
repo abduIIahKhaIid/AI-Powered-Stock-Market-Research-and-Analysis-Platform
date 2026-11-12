@@ -31,6 +31,8 @@ export interface ChartSpec {
   candles: Candle[];
   source?: string | null;
   as_of?: string | null;
+  /** Indicators the model asked for (compute_indicators); the chart switches them on. */
+  indicators?: string[];
 }
 
 /** Result of checking every figure in the answer against the tool data (SCRUM-27). */
