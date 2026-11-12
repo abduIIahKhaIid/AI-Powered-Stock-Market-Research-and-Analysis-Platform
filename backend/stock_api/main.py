@@ -11,6 +11,7 @@ from stock_api.approvals_api import router as approvals_router
 from stock_api.charts import router as charts_router
 from stock_api.chat import router as chat_router
 from stock_api.config import Settings, get_settings
+from stock_api.jobs_api import router as jobs_router
 
 settings = get_settings()
 
@@ -32,6 +33,7 @@ app.add_middleware(
 app.include_router(chat_router)
 app.include_router(charts_router)
 app.include_router(approvals_router)
+app.include_router(jobs_router)
 
 
 class LiveResponse(BaseModel):
