@@ -55,6 +55,8 @@ _MASKS = [
     re.compile(r"(?m)^\s*(?:\d+[.)]|[-*+])\s"),  # list markers
     re.compile(r"\b(?:S&P|S&amp;P)\s?\d+|\bNasdaq[- ]?\d+|\bDow\s?\d+|\bRussell\s?\d+", re.I),
     re.compile(r"\b(?:Q[1-4]|H[12]|FY)\s?'?\d{2,4}\b", re.I),
+    # SEC form names: 10-K, 10-Q, 8-K, 20-F, 10-K/A
+    re.compile(r"\b\d{1,2}-(?:K|Q|F)(?:/A)?\b"),
     re.compile(
         rf"\b\d+(?:\.\d+)?\s?[{_DASHES}]?\s?(?:day|days|week|weeks|month|months|year|years|yr|yrs|"
         r"hour|hours|minute|minutes|min|quarter|quarters|session|sessions|period|periods)\b",

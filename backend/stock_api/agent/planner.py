@@ -16,6 +16,8 @@ from typing import Any
 
 from ..chart_spec import chart_from_tool
 from ..llm import ChatResult, LLMError, LLMGateway, LLMUnavailableError, TextDelta
+from .approvals import ApprovalBroker, ApprovalRequest
+from .audit import AuditLog
 from .composer import disclaimer_for, extract_assumptions, source_link, tool_assumptions
 from .context import (
     ConversationStore,
@@ -108,6 +110,8 @@ class Agent:
         tool_result_max_chars: int = 6000,
         history_messages: int = 8,
         max_fix_attempts: int = 2,
+        approvals: ApprovalBroker | None = None,
+        audit: AuditLog | None = None,
         today: Callable[[], date] = date.today,
     ) -> None:
         self.gateway = gateway
@@ -118,7 +122,37 @@ class Agent:
         self.tool_result_max_chars = tool_result_max_chars
         self.history_messages = history_messages
         self.max_fix_attempts = max_fix_attempts
+        self.approvals = approvals
+        self.audit = audit
         self.today = today
+
+    async def _audit_call(
+        self,
+        conversation_id: str,
+        call_id: str,
+        outcome: ToolOutcome,
+        approval_id: str | None,
+    ) -> None:
+        if self.audit is None:
+            return
+        await self.audit.tool_call(
+            {
+                "conversation_id": conversation_id,
+                "call_id": call_id,
+                "tool": outcome.name,
+                "arguments": outcome.arguments,
+                "ok": outcome.ok,
+                "error": outcome.error,
+                "source": outcome.source,
+                "as_of": outcome.as_of,
+                "latency_ms": outcome.latency_ms,
+                "approval_id": approval_id,
+            }
+        )
+
+    async def _audit_approval(self, request: ApprovalRequest) -> None:
+        if self.audit is not None:
+            await self.audit.approval(request)
 
     async def run(
         self, message: str, *, mode: Mode = "simple", conversation_id: str | None = None
@@ -152,6 +186,7 @@ class Agent:
                     specs = self.policy.visible(await toolbox.list_tools())
                     tools = [spec.to_openai() for spec in specs]
                     known = {spec.name for spec in specs}
+                    by_name = {spec.name: spec for spec in specs}
 
                     for step in range(1, self.max_steps + 1):
                         # On the last step, or once the tool budget is spent, withhold the
@@ -189,11 +224,55 @@ class Agent:
                                 },
                             )
                             refusal = self.policy.refusal(call, totals.tool_calls, known)
+                            approval_id: str | None = None
+                            needed = (
+                                None if refusal else self.policy.approval_for(by_name[call.name])
+                            )
+                            if needed and self.approvals is None:
+                                refusal = (
+                                    "This action needs your approval, which is not available here."
+                                )
+                            elif needed and self.approvals is not None:
+                                request = self.approvals.open(
+                                    conversation_id,
+                                    call.name,
+                                    call.arguments,
+                                    needed["reason"],
+                                    needed.get("estimate"),
+                                )
+                                approval_id = request.id
+                                await self._audit_approval(request)
+                                yield AgentEvent(
+                                    "approval_required",
+                                    {
+                                        "approval_id": request.id,
+                                        "tool": call.name,
+                                        "arguments": call.arguments,
+                                        "reason": request.reason,
+                                        "estimate": request.estimate,
+                                        "expires_in": self.approvals.timeout_seconds,
+                                        "step": step,
+                                    },
+                                )
+                                status = await self.approvals.wait(request.id)
+                                await self._audit_approval(request)
+                                yield AgentEvent(
+                                    "approval_result",
+                                    {"approval_id": request.id, "status": status},
+                                )
+                                if status == "denied":
+                                    refusal = "The user declined this action, so it was not run."
+                                elif status != "approved":
+                                    refusal = (
+                                        "The approval request got no answer in time, so the "
+                                        "action was not run."
+                                    )
                             if refusal:
                                 outcome = ToolOutcome.failure(call.name, call.arguments, refusal)
                             else:
                                 totals.tool_calls += 1
                                 outcome = await toolbox.call(call.name, call.arguments)
+                            await self._audit_call(conversation_id, call.id, outcome, approval_id)
 
                             evidence.add_text(json.dumps(call.arguments))
                             if outcome.ok:

@@ -929,3 +929,77 @@ a.source-name {
   color: var(--danger);
   font-size: 13px;
 }
+
+/* ---------- Approval card (SCRUM-26) ---------- */
+
+.approval-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border: 1px solid #f0d98c;
+  border-radius: 10px;
+  background: #fffbed;
+}
+
+.approval-card h3 {
+  margin: 0;
+  font-size: 15px;
+}
+
+.approval-card p {
+  margin: 0;
+}
+
+.approval-card pre {
+  max-height: 200px;
+  overflow: auto;
+  padding: 8px;
+  border-radius: 6px;
+  background: var(--panel);
+  font-size: 12px;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.approval-actions button {
+  padding: 6px 14px;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.approval-actions .approve {
+  border: 0;
+  background: var(--accent);
+  color: #fff;
+}
+
+.approval-actions .deny {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  color: var(--text);
+}
+
+.approval-actions button:disabled {
+  cursor: progress;
+  opacity: 0.6;
+}
+
+.approval-done {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 13px;
+  background: var(--sidebar);
+  color: var(--muted);
+}
+
+.approval-done.approved {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}

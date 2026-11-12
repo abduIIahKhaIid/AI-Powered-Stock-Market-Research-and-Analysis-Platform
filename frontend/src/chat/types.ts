@@ -35,6 +35,18 @@ export interface ChartSpec {
   indicators?: string[];
 }
 
+export type ApprovalStatus = "pending" | "approved" | "denied" | "expired";
+
+/** A sensitive action waiting for the user's decision (SCRUM-26). */
+export interface ApprovalItem {
+  id: string;
+  tool: string;
+  arguments: Record<string, unknown>;
+  reason: string;
+  estimate?: string | null;
+  status: ApprovalStatus;
+}
+
 /** Result of checking every figure in the answer against the tool data (SCRUM-27). */
 export interface Grounding {
   status: "verified" | "corrected" | "removed" | "no_figures";
@@ -80,6 +92,19 @@ export type ChatEvent =
     }
   | { type: "sources"; data: { sources: Source[] } }
   | { type: "chart"; data: ChartSpec }
+  | {
+      type: "approval_required";
+      data: {
+        approval_id: string;
+        tool: string;
+        arguments: Record<string, unknown>;
+        reason: string;
+        estimate: string | null;
+        expires_in: number;
+        step: number;
+      };
+    }
+  | { type: "approval_result"; data: { approval_id: string; status: ApprovalStatus } }
   | {
       type: "grounding";
       data: {
@@ -144,6 +169,7 @@ export interface AssistantMessage {
   assumptions?: string[];
   grounding?: Grounding;
   charts?: ChartSpec[];
+  approvals?: ApprovalItem[];
   usage?: Usage;
   error?: { code: string; message: string };
 }

@@ -123,6 +123,8 @@ first event to ask follow-up questions; older turns are summarised automatically
 | `token` | a piece of the answer text |
 | `tool_call` / `tool_result` | tool name, arguments, ok or error, source, as_of, a small preview |
 | `chart` | a price chart spec (symbol, period, interval, candles, source) after `get_price_history` |
+| `approval_required` | a sensitive action waits for the user: tool, arguments, reason, estimate (answer with `POST /approvals/{id}`) |
+| `approval_result` | `approved`, `denied` or `expired` |
 | `sources` | every data source used, with its as_of date |
 | `grounding` | `fixing` while figures that did not match the data are corrected, `removed` if any were dropped |
 | `done` | full `answer`, `disclaimer`, `assumptions`, `grounding` report, tool trace, tokens, cost and models used |
@@ -143,6 +145,14 @@ Answers about price movement show a candlestick chart with volume (TradingView L
 attribution kept visible). The chart can switch period (1M to 5Y) through
 `GET /prices/{symbol}?period=6mo&interval=1d` and add SMA 20, SMA 50, Bollinger Bands, RSI 14 and
 MACD, computed in the browser from the same candles.
+
+**Policy and approvals.** Arguments are checked before any tool runs (ticker format, at most 5
+symbols, allowed periods and intervals, at most 10 years). Running model-written code, background
+jobs, exports, paid API calls and any tool in `AGENT_APPROVAL_TOOLS` need the user's approval: the
+stream sends `approval_required`, the UI shows a card, and `POST /approvals/{id}` with
+`{"decision": "approve" | "deny"}` lets the turn continue. Unanswered requests expire after
+`APPROVAL_TIMEOUT_SECONDS`. Every tool call and approval is stored in Postgres (`tool_calls`,
+`approvals`).
 
 Try it from the terminal:
 

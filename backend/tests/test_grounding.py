@@ -47,6 +47,7 @@ def texts(answer: str) -> list[str]:
         ("The 50-day average over 6 months, SMA 20 and RSI 14", []),
         ("The S&P 500 and Nasdaq-100 in Q3 2026", []),
         ("Periods 1M, 3M and 6M", []),
+        ("From the 10-K and 10-Q filings (and an 8-K, 20-F, 10-K/A)", []),
         ("For example, a $30 stock earning $2 has a P/E of 15.", []),
         ("Ticker BRK.B and ratio 45.2", ["45.2"]),
     ],

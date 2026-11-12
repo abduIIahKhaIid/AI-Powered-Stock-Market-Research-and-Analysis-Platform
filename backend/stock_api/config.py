@@ -53,6 +53,10 @@ class Settings(BaseSettings):
     agent_history_messages: int = 8
     conversation_ttl_seconds: int = 7 * 24 * 3600
     mcp_call_timeout: float = 60.0
+    # Policy (SCRUM-26). Tools needing approval beyond the built-in rules, as JSON list.
+    agent_approval_tools: list[str] = []
+    approval_timeout_seconds: float = 300.0
+    audit_enabled: bool = True
 
 
 @lru_cache
