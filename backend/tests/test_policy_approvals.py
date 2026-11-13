@@ -256,3 +256,17 @@ async def test_postgres_audit_writes_rows() -> None:
             await conn.execute("SELECT status FROM approvals WHERE id = %s", (request.id,))
         ).fetchone()
         assert row == ("approved",)
+
+
+async def test_the_approval_card_gets_the_toolbox_estimate() -> None:
+    class EstimatingToolbox(FakeToolbox):
+        def estimate(self, name: str, arguments: dict[str, Any]) -> str | None:
+            return "Up to 30 s. No cost."
+
+    toolbox, audit, broker = EstimatingToolbox(), MemoryAuditLog(), ApprovalBroker(5)
+    agent, _ = make_agent(toolbox, broker, audit, CODE_TURN, text_turn("Done: 42.0."))
+    events = await run_with_decision(agent, broker, approve=True)
+    required = next(e.data for e in events if e.type == "approval_required")
+    assert required["estimate"] == "Up to 30 s. No cost."
+    done = events[-1].data
+    assert done["projection"] is False

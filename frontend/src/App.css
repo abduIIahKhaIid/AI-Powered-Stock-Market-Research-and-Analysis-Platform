@@ -35,7 +35,9 @@ button {
 }
 
 button:focus-visible,
-textarea:focus-visible {
+textarea:focus-visible,
+a:focus-visible,
+summary:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
@@ -1363,4 +1365,83 @@ a.source-name {
 .approval-done.approved {
   background: var(--accent-soft);
   color: var(--accent-strong);
+}
+
+/* ---------- SCRUM-38: approval facts, retry status, projection banner, skip link ---------- */
+
+.approval-facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 12px;
+  margin: 2px 0;
+  font-size: 14px;
+}
+
+.approval-facts dt {
+  color: var(--muted);
+}
+
+.approval-facts dd {
+  margin: 0;
+}
+
+.job-card.retrying .job-status {
+  color: #a15c00;
+}
+
+.job-card.retrying .job-bar span {
+  background: #d08a00;
+}
+
+.job-retry {
+  margin: 6px 0 0;
+  font-size: 13px;
+  color: #8a4b00;
+}
+
+.disclaimer-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 10px;
+  padding: 10px 12px;
+  border: 1px solid #f0d98c;
+  border-left: 4px solid #d08a00;
+  border-radius: 8px;
+  background: #fffbed;
+  font-size: 13px;
+}
+
+.disclaimer-banner p {
+  margin: 0;
+}
+
+.disclaimer-icon {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: #d08a00;
+  color: #fff;
+  font-weight: 700;
+  font-size: 13px;
+}
+
+.skip-link {
+  position: absolute;
+  top: -40px;
+  left: 8px;
+  z-index: 50;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  top: 8px;
 }

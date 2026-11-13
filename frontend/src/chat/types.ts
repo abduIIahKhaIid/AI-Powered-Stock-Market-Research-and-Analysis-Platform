@@ -76,6 +76,8 @@ export interface ApprovalItem {
   reason: string;
   estimate?: string | null;
   status: ApprovalStatus;
+  /** When the request stops waiting (ms since epoch). */
+  expiresAt?: number;
 }
 
 /** Result of checking every figure in the answer against the tool data (SCRUM-27). */
@@ -99,6 +101,8 @@ export interface JobItem {
   progress: number;
   stage: string;
   error?: string | null;
+  attempts?: number;
+  maxAttempts?: number;
   /** True once the summary of the finished job has been posted in the chat. */
   reported?: boolean;
 }
@@ -127,6 +131,7 @@ export interface JobDoneData {
   report: string;
   error: string | null;
   disclaimer?: string;
+  projection?: boolean;
 }
 
 export interface Usage {
@@ -199,6 +204,7 @@ export type ChatEvent =
         usage: Usage;
         assumptions?: string[];
         grounding?: Grounding;
+        projection?: boolean;
       };
     }
   | { type: "error"; data: { code: string; message: string } };
@@ -244,6 +250,8 @@ export interface AssistantMessage {
   disclaimer?: string;
   assumptions?: string[];
   grounding?: Grounding;
+  /** A projection or what-if answer: shown with the projection banner (SCRUM-38). */
+  projection?: boolean;
   charts?: AnyChartSpec[];
   approvals?: ApprovalItem[];
   jobs?: JobItem[];

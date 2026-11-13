@@ -18,7 +18,13 @@ from ..chart_spec import chart_from_tool
 from ..llm import ChatResult, LLMError, LLMGateway, LLMUnavailableError, TextDelta
 from .approvals import ApprovalBroker, ApprovalRequest
 from .audit import AuditLog
-from .composer import disclaimer_for, extract_assumptions, source_link, tool_assumptions
+from .composer import (
+    disclaimer_for,
+    extract_assumptions,
+    is_projection,
+    source_link,
+    tool_assumptions,
+)
 from .context import (
     ConversationStore,
     Mode,
@@ -97,6 +103,12 @@ def _preview(outcome: ToolOutcome) -> Any:
     if isinstance(data, list):
         return {"count": len(data), "first": data[:3]}
     return str(data)[:300]
+
+
+def _estimate(toolbox: Any, name: str, arguments: dict[str, Any]) -> str | None:
+    """Time and cost of this call, when the toolbox can tell (shown on the approval card)."""
+    estimate = getattr(toolbox, "estimate", None)
+    return estimate(name, arguments) if callable(estimate) else None
 
 
 def _job_started(name: str, outcome: ToolOutcome, conversation_id: str) -> dict[str, Any] | None:
@@ -267,7 +279,8 @@ class Agent:
                                     call.name,
                                     call.arguments,
                                     needed["reason"],
-                                    needed.get("estimate"),
+                                    _estimate(toolbox, call.name, call.arguments)
+                                    or needed.get("estimate"),
                                 )
                                 approval_id = request.id
                                 await self._audit_approval(request)
@@ -460,6 +473,7 @@ class Agent:
                 "conversation_id": conversation_id,
                 "answer": answer,
                 "disclaimer": disclaimer_for(message, answer, assumptions),
+                "projection": is_projection(message, answer, assumptions),
                 "assumptions": assumptions,
                 "grounding": grounding,
                 "tools": tool_trace,

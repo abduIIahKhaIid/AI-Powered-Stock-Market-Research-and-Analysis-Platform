@@ -16,6 +16,10 @@ export default function JobCard({ job }: { job: JobItem }) {
   const [cancelError, setCancelError] = useState<string | null>(null);
   const active = job.status === "queued" || job.status === "running";
   const percent = Math.max(0, Math.min(100, Math.round(job.progress)));
+  // A queued job with attempts behind it is waiting for its next try (SCRUM-34).
+  const retrying = active && job.stage.startsWith("Retrying");
+  const attempt = job.attempts ?? 0;
+  const statusText = retrying ? "Retrying" : STATUS[job.status];
 
   async function cancel() {
     setCancelling(true);
@@ -29,12 +33,15 @@ export default function JobCard({ job }: { job: JobItem }) {
   }
 
   return (
-    <section className={`job-card ${job.status}`} aria-label={`${job.title} progress`}>
+    <section
+      className={`job-card ${retrying ? "retrying" : job.status}`}
+      aria-label={`${job.title} progress`}
+    >
       <div className="job-head">
         <span className="job-title">{job.title}</span>
         <span className="job-status">
-          {STATUS[job.status]}
-          {active && job.status === "running" ? ` · ${percent}%` : ""}
+          {statusText}
+          {job.status === "running" ? ` · ${percent}%` : ""}
         </span>
       </div>
       <div
@@ -58,11 +65,20 @@ export default function JobCard({ job }: { job: JobItem }) {
             className="job-cancel"
             onClick={() => void cancel()}
             disabled={cancelling}
+            aria-label={cancelling ? `Cancelling ${job.title}` : `Cancel ${job.title}`}
           >
             {cancelling ? "Cancelling…" : "Cancel job"}
           </button>
         )}
       </div>
+      {(retrying || attempt > 1) && job.maxAttempts && (
+        <p className="job-retry">
+          {retrying
+            ? `Attempt ${attempt} of ${job.maxAttempts} failed; trying again.`
+            : `Attempt ${attempt} of ${job.maxAttempts}.`}
+          {retrying && job.error ? ` Last error: ${job.error}` : ""}
+        </p>
+      )}
       {cancelError && (
         <p className="job-error" role="alert">
           {cancelError}

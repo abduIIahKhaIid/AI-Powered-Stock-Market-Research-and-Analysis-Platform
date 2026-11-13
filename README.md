@@ -232,8 +232,23 @@ Open http://localhost:5173 and ask a question, or pick one of the starter prompt
 - **Conversations.** The sidebar lists your chats; they are kept in this browser
   (`localStorage`), and follow-up questions reuse the API's `conversation_id`. On narrow screens
   the sidebar opens from the menu button.
-- **Background jobs.** A scan started from the chat shows a live progress bar under the answer
-  and its summary arrives as a new message when it finishes, also after a page reload.
+- **Approvals.** Before a sensitive action, such as running Python or starting a background
+  job, a card shows:
+  - the action and why it needs approval
+  - the expected time and cost, for example "12 scenarios, about 12–48 s. No cost."
+  - how long it waits for your answer
+  - **Approve** and **Deny** buttons
+- **Projection banner.** Projection and what-if answers start with a "Projection, not a
+  prediction" banner, and their assumptions and the disclaimer are listed below the answer.
+- **Accessibility.**
+  - Everything works from the keyboard, with visible focus.
+  - A "Skip to the message box" link comes first.
+  - Every button has a screen-reader label, such as "Approve: Run python analysis" or "Cancel
+    Scenario sweep".
+  - Charts come with a text summary and their tables.
+- **Background jobs.** A scan started from the chat shows a live progress bar under the answer,
+  with the stage and, after a temporary error, "Retrying" and the attempt count. Its summary
+  arrives as a new message when it finishes, also after a page reload.
 - **Saved analyses.** Finished background scans are listed in the sidebar (`GET /api/analyses`).
   Opening one shows its result table, the CSV download and the data source. These are kept on
   the server, so they are still there after a restart or on another browser.

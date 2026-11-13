@@ -15,12 +15,16 @@ describe("GroundingNote", () => {
 
   it("shows the removal note", () => {
     const note = "1 figure could not be matched to the source data and was removed: 9.9%.";
-    render(<GroundingNote grounding={{ status: "removed", checked: 2, removed: ["9.9%"], note }} />);
+    render(
+      <GroundingNote grounding={{ status: "removed", checked: 2, removed: ["9.9%"], note }} />,
+    );
     expect(screen.getByRole("note")).toHaveTextContent(note);
   });
 
   it("shows nothing when the answer had no figures", () => {
-    const { container } = render(<GroundingNote grounding={{ status: "no_figures", checked: 0 }} />);
+    const { container } = render(
+      <GroundingNote grounding={{ status: "no_figures", checked: 0 }} />,
+    );
     expect(container).toBeEmptyDOMElement();
   });
 });

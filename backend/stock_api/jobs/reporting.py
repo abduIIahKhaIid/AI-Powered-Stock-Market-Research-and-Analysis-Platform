@@ -4,10 +4,14 @@ from __future__ import annotations
 
 from typing import Any
 
+from ..agent.composer import PROJECTION_NOTE
 from ..agent.context import DISCLAIMER
 from .registry import JobKind
 from .results import ResultStore, load_result
 from .store import Job
+
+# Job kinds whose results are projections: their summary gets the projection disclaimer.
+PROJECTION_KINDS = frozenset({"scenario_sweep"})
 
 
 def report_text(job: Job, kind: JobKind | None, results: ResultStore | None) -> str:
@@ -35,5 +39,8 @@ def done_payload(job: Job, kind: JobKind | None, results: ResultStore | None) ->
         "error": job.error,
         "files": job.files,
         "conversation_id": job.conversation_id,
-        "disclaimer": DISCLAIMER,
+        "disclaimer": f"{DISCLAIMER} {PROJECTION_NOTE}"
+        if job.kind in PROJECTION_KINDS
+        else DISCLAIMER,
+        "projection": job.kind in PROJECTION_KINDS,
     }

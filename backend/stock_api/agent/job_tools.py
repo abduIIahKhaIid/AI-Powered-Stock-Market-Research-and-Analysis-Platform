@@ -162,6 +162,34 @@ SPECS = {START_SCAN: SCAN_SPEC, START_SWEEP: SWEEP_SPEC}
 WAITING_TOOL_KINDS = {RUN_PYTHON: "python_analysis"}
 
 
+def _count(value: Any) -> int:
+    return len(value) if isinstance(value, list | dict) else 0
+
+
+def estimate(name: str, arguments: dict[str, Any]) -> str | None:
+    """A rough time and cost for a job tool, from its arguments."""
+    free = "No cost: free market data, no paid API calls."
+    if name == START_SCAN:
+        n = max(1, _count(arguments.get("symbols")))
+        return f"About {n * 2}–{n * 6} s for {n} symbol{'s' if n != 1 else ''}. {free}"
+    if name == START_SWEEP:
+        symbols = max(1, _count(arguments.get("symbols")))
+        grid = arguments.get("grid")
+        if isinstance(grid, dict) and grid:
+            cases = 1
+            for values in grid.values():
+                cases *= max(1, _count(values))
+        else:
+            cases = max(1, _count(arguments.get("cases")))
+        total = symbols * cases
+        return f"{total} scenarios, about {total}–{total * 4} s. {free}"
+    if name == RUN_PYTHON:
+        n = _count(arguments.get("symbols"))
+        fetch = f" after fetching prices for {n} symbol{'s' if n != 1 else ''}" if n else ""
+        return f"Up to 30 s in the isolated sandbox{fetch} (no network, 512 MB memory). No cost."
+    return None
+
+
 class JobLauncher:
     """Validates, records and queues a job; the same steps as POST /jobs."""
 
@@ -226,6 +254,10 @@ class JobToolbox:
         if self.launcher.offers("python_analysis"):
             specs.append(PYTHON_SPEC)
         return specs
+
+    def estimate(self, name: str, arguments: dict[str, Any]) -> str | None:
+        """Time and cost, for the approval card (SCRUM-38)."""
+        return estimate(name, arguments)
 
     async def call(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         if name in WAITING_TOOL_KINDS:

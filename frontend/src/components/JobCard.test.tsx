@@ -121,7 +121,7 @@ describe("Background job progress", () => {
     const card = screen.getByRole("region", { name: "Indicator scan progress" });
     expect(within(card).getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
     expect(within(card).getByText("Finished")).toBeInTheDocument();
-    expect(within(card).queryByRole("button", { name: "Cancel job" })).not.toBeInTheDocument();
+    expect(within(card).queryByRole("button", { name: /^Cancel/ })).not.toBeInTheDocument();
     expect(
       screen.getByText("This is educational information, not financial advice."),
     ).toBeInTheDocument();
@@ -177,16 +177,16 @@ describe("Background job progress", () => {
       title: "Indicator scan",
       status: "running",
       progress: 42.4,
-      stage: "Retrying 2 of 3 in 5 s",
+      stage: "Computing indicators for MSFT",
     };
     render(<JobCard job={job} />);
     const bar = screen.getByRole("progressbar");
     expect(bar).toHaveAttribute("aria-valuenow", "42");
-    expect(bar).toHaveAttribute("aria-valuetext", "42%, Retrying 2 of 3 in 5 s");
+    expect(bar).toHaveAttribute("aria-valuetext", "42%, Computing indicators for MSFT");
     expect(screen.getByText("Running · 42%")).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Cancel job" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel Indicator scan" }));
     await waitFor(() => expect(calls).toContain(`POST /api/jobs/${JOB_ID}/cancel`));
-    expect(screen.getByRole("button", { name: "Cancelling…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Cancelling Indicator scan" })).toBeDisabled();
   });
 
   it("tracks job events in the message state", () => {
@@ -210,5 +210,43 @@ describe("Background job progress", () => {
     } as never);
     expect([done.status, done.error, jobNeedsWatching(done)]).toEqual(["failed", "boom", true]);
     expect(jobNeedsWatching({ ...done, reported: true })).toBe(false);
+  });
+
+  it("shows when a job is waiting to try again", () => {
+    const job: JobItem = {
+      id: JOB_ID,
+      kind: "indicator_scan",
+      title: "Indicator scan",
+      status: "queued",
+      progress: 40,
+      stage: "Retrying 2 of 3 in 5 s",
+      attempts: 1,
+      maxAttempts: 3,
+      error: "TransientJobError: 429 Too Many Requests",
+    };
+    render(<JobCard job={job} />);
+    const card = screen.getByRole("region", { name: "Indicator scan progress" });
+    expect(card).toHaveClass("retrying");
+    expect(within(card).getByText("Retrying")).toBeInTheDocument();
+    expect(card).toHaveTextContent(
+      "Attempt 1 of 3 failed; trying again. Last error: TransientJobError: 429 Too Many Requests",
+    );
+    expect(within(card).getByRole("progressbar")).toHaveAttribute(
+      "aria-valuetext",
+      "40%, Retrying 2 of 3 in 5 s",
+    );
+  });
+
+  it("copies the attempt count from progress events", () => {
+    const job: JobItem = {
+      id: JOB_ID,
+      kind: "indicator_scan",
+      title: "Indicator scan",
+      status: "running",
+      progress: 0,
+      stage: "",
+    };
+    const next = applyJobProgress(job, progress("running", 10, "Attempt 2 of 3") as never);
+    expect([next.attempts, next.maxAttempts]).toEqual([1, 3]);
   });
 });

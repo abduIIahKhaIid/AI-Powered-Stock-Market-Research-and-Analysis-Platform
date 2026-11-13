@@ -108,6 +108,7 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
         reason: data.reason,
         estimate: data.estimate,
         status: "pending" as const,
+        expiresAt: Date.now() + (data.expires_in ?? 0) * 1000,
       };
       return {
         ...message,
@@ -159,6 +160,8 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
         disclaimer: event.data.disclaimer,
         assumptions: event.data.assumptions ?? [],
         grounding: event.data.grounding,
+        projection:
+          event.data.projection ?? (message.charts ?? []).some((c) => c.kind === "scenario"),
         usage: event.data.usage,
         statusText: undefined,
         tools: message.tools.map((tool) =>
@@ -207,6 +210,8 @@ export function applyJobProgress(job: JobItem, data: JobProgressData): JobItem {
     progress: data.progress,
     stage: data.stage,
     error: data.error,
+    attempts: data.attempts,
+    maxAttempts: data.max_attempts,
   };
 }
 
@@ -222,6 +227,7 @@ export function jobReportMessage(id: string, mode: Mode, done: JobDoneData): Ass
     tools: [],
     sources: [],
     disclaimer: done.status === "succeeded" ? done.disclaimer : undefined,
+    projection: done.status === "succeeded" && Boolean(done.projection),
     reportFor: done.id,
   };
 }

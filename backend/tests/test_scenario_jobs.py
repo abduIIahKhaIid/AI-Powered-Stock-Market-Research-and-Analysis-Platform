@@ -189,3 +189,32 @@ async def test_the_agent_can_start_a_sweep() -> None:
     assert queue.enqueued == [outcome.payload["job_id"]]
     bad = await toolbox.call(START_SWEEP, {"symbols": ["AAPL"]})
     assert not bad.ok and "Give cases" in (bad.error or "")
+
+
+def test_approval_estimates_for_job_tools() -> None:
+    from stock_api.agent.job_tools import RUN_PYTHON, START_SCAN, estimate
+
+    assert estimate(START_SCAN, {"symbols": ["AAPL", "MSFT", "NVDA"]}) == (
+        "About 6–18 s for 3 symbols. No cost: free market data, no paid API calls."
+    )
+    sweep = estimate(
+        START_SWEEP, {"symbols": ["AAPL", "MSFT"], "grid": {"a": [1, 2], "b": [1, 2, 3]}}
+    )
+    assert sweep is not None and sweep.startswith("12 scenarios, about 12–48 s.")
+    python = estimate(RUN_PYTHON, {"symbols": ["AAPL"]})
+    assert (
+        python is not None and "Up to 30 s in the isolated sandbox after fetching prices" in python
+    )
+    assert estimate("get_quote", {}) is None
+
+
+def test_sweep_summaries_carry_the_projection_disclaimer() -> None:
+    from stock_api.jobs.reporting import done_payload
+
+    store = MemoryJobStore()
+    job = store.create("scenario_sweep", {})
+    job = store.update(job.id, status="cancelled")
+    payload = done_payload(job, None, None)
+    assert payload["projection"] is True and "not predictions" in payload["disclaimer"]
+    scan = store.update(store.create("indicator_scan", {}).id, status="cancelled")
+    assert done_payload(scan, None, None)["projection"] is False
