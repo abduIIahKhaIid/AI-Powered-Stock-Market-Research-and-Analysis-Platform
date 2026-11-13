@@ -171,6 +171,13 @@ stream sends `approval_required`, the UI shows a card, and `POST /approvals/{id}
 Job kinds: `indicator_scan` (indicators for up to 10 symbols, 120 s soft / 150 s hard limit) and
 `refresh_directory` (run daily by Celery Beat on the `ingest` queue).
 
+**Python sandbox.** For calculations no other tool covers (volatility, correlation, simple
+backtests), the agent writes Python and calls `run_python_analysis`. That needs your
+approval. The worker fetches the price history as CSV files and sends the code to the Sandbox
+Runner. The runner runs it in a fresh container: no network, read-only filesystem, non-root,
+no capabilities, 512 MB, 1 CPU, 128 processes, 30 s. The result comes back as JSON. See
+`sandbox/README.md`.
+
 **Retries and saved results.** Provider, network and rate-limit errors are retried with
 exponential backoff (5 s, then 10 s; at most 3 attempts). While a job waits, its stage reads
 `Retrying 2 of 3 in 5 s`. Any other error fails the job at once. The job id is the idempotency

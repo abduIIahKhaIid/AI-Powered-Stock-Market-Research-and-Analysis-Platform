@@ -80,15 +80,21 @@ services:
     env_file: .env
     environment:
       JOB_RESULTS_DIR: /data/job-results
+      SANDBOX_URL: http://sandbox:8200
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
       - ./backend:/app
       - jobresults:/data/job-results
+    networks:
+      - default
+      - sandbox
     depends_on:
       redis:
         condition: service_healthy
       postgres:
+        condition: service_healthy
+      sandbox:
         condition: service_healthy
 
   beat:
@@ -101,6 +107,36 @@ services:
       redis:
         condition: service_healthy
 
+  # Builds the image each analysis run starts from (pandas, numpy, scipy, statsmodels, ta).
+  # It exits at once; the runner starts one container from it per run.
+  sandbox-image:
+    build: ./sandbox/image
+    image: stock-sandbox:latest
+    entrypoint: ["python", "-c", "print('sandbox image ready')"]
+    network_mode: none
+    restart: "no"
+
+  # Sandbox Runner: the only service with the Docker socket. It is reachable only from the
+  # worker, over the internal sandbox network, and has no published port.
+  sandbox:
+    build: ./sandbox/runner
+    environment:
+      SANDBOX_IMAGE: stock-sandbox:latest
+      SANDBOX_TOKEN: ${SANDBOX_TOKEN:-}
+      SANDBOX_MAX_CONCURRENT: ${SANDBOX_MAX_CONCURRENT:-2}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - sandbox
+    depends_on:
+      sandbox-image:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8200/health/ready', timeout=3)"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   frontend:
     build: ./frontend
     environment:
@@ -111,6 +147,11 @@ services:
       - "127.0.0.1:5173:5173"
     depends_on:
       - api
+
+networks:
+  # Internal only: no route to the internet or the host.
+  sandbox:
+    internal: true
 
 volumes:
   pgdata:

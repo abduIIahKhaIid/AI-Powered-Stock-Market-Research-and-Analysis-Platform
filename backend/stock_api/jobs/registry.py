@@ -20,6 +20,8 @@ from .results import ResultStore, check_name
 from .store import JobStore
 
 ToolRunner = Callable[[str, dict[str, Any]], ToolOutcome]
+# Runs code with input files in the sandbox: (code, files) -> {ok, result, stdout, error, ...}.
+SandboxRunner = Callable[[str, dict[str, str]], dict[str, Any]]
 
 _TICKER = re.compile(r"^[A-Z][A-Z0-9.\-]{0,9}$")
 MAX_SCAN_SYMBOLS = 10
@@ -289,7 +291,106 @@ def refresh_directory(runner: ToolRunner) -> Callable[[dict[str, Any], JobContex
     return handle
 
 
-def build_registry(runner: ToolRunner) -> dict[str, JobKind]:
+# --- Python analysis in the sandbox (SCRUM-28) ------------------------------------------
+
+MAX_CODE_CHARS = 20_000
+MAX_PYTHON_SYMBOLS = 5
+PRICE_COLUMNS = ("time", "open", "high", "low", "close", "volume")
+
+
+class SandboxCodeError(RuntimeError):
+    """The code itself failed in the sandbox; not worth retrying unchanged."""
+
+
+def validate_python(params: dict[str, Any]) -> dict[str, Any]:
+    code = params.get("code")
+    if not isinstance(code, str) or not code.strip():
+        raise JobInputError("code must be the Python source to run.")
+    if len(code) > MAX_CODE_CHARS:
+        raise JobInputError(f"code must be at most {MAX_CODE_CHARS} characters.")
+    raw = params.get("symbols") or []
+    if not isinstance(raw, list):
+        raise JobInputError("symbols must be a list of tickers.")
+    symbols = list(dict.fromkeys(str(s).strip().upper() for s in raw))
+    if len(symbols) > MAX_PYTHON_SYMBOLS:
+        raise JobInputError(f"Give at most {MAX_PYTHON_SYMBOLS} symbols.")
+    bad = [s for s in symbols if not _TICKER.match(s)]
+    if bad:
+        raise JobInputError(f"Not valid tickers: {', '.join(bad)}.")
+    period = params.get("period", "1y")
+    if period not in {"1mo", "3mo", "6mo", "ytd", "1y", "2y", "5y"}:
+        raise JobInputError(f"Unsupported period '{period}'.")
+    return {"code": code, "symbols": symbols, "period": period}
+
+
+def candles_csv(candles: list[dict[str, Any]]) -> str:
+    out = io.StringIO()
+    writer = csv.writer(out, lineterminator="\n")
+    writer.writerow(["date", *PRICE_COLUMNS[1:]])
+    for candle in candles:
+        writer.writerow([str(candle["time"])[:10], *(candle[c] for c in PRICE_COLUMNS[1:])])
+    return out.getvalue()
+
+
+def python_analysis(
+    runner: ToolRunner, sandbox: SandboxRunner
+) -> Callable[[dict[str, Any], JobContext], Any]:
+    """Fetch the price history as input files, then run the code in the sandbox."""
+
+    def handle(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
+        symbols = params["symbols"]
+        files: dict[str, str] = {}
+        sources: dict[str, Any] = {}
+        for index, symbol in enumerate(symbols):
+            ctx.progress(
+                int(index / len(symbols) * 50),
+                f"Fetching price history for {symbol} ({index + 1} of {len(symbols)})",
+            )
+            outcome = ctx.check(
+                runner(
+                    "get_price_history",
+                    {"symbol": symbol, "period": params["period"], "interval": "1d"},
+                )
+            )
+            if not outcome.ok:
+                raise JobInputError(f"{symbol}: {outcome.error}")
+            files[f"prices_{symbol}.csv"] = candles_csv(outcome.payload["data"]["candles"])
+            if outcome.source:
+                sources[outcome.source] = outcome.as_of
+        ctx.progress(60, "Running the code in the sandbox")
+        run = sandbox(params["code"], files)
+        if not run.get("ok"):
+            raise SandboxCodeError(run.get("error") or "The code failed in the sandbox.")
+        ctx.progress(100, "Done")
+        return {
+            "result": run.get("result"),
+            "stdout": run.get("stdout") or "",
+            "inputs": sorted(files),
+            "symbols": symbols,
+            "period": params["period"],
+            "duration_ms": run.get("duration_ms"),
+            "sources": [{"source": s, "as_of": a} for s, a in sources.items()],
+        }
+
+    return handle
+
+
+def report_python(params: dict[str, Any], result: Any) -> str:
+    text = json.dumps(result["result"], indent=2)
+    if len(text) > 1500:
+        text = text[:1500] + "\n…"
+    on = f" on {', '.join(result['symbols'])} ({result['period']})" if result["symbols"] else ""
+    lines = [f"**Python analysis finished**{on}.", "", "```json", text, "```"]
+    sources = "; ".join(
+        f"{s['source']}, as of {str(s['as_of'])[:10]}" if s.get("as_of") else s["source"]
+        for s in result.get("sources", [])
+    )
+    if sources:
+        lines.append(f"Price data: {sources}.")
+    return "\n".join(lines)
+
+
+def build_registry(runner: ToolRunner, sandbox: SandboxRunner | None = None) -> dict[str, JobKind]:
     kinds = [
         JobKind(
             "indicator_scan",
@@ -313,4 +414,21 @@ def build_registry(runner: ToolRunner) -> dict[str, JobKind]:
             summarize=lambda params, result: "NASDAQ symbol directory refreshed",
         ),
     ]
+    if sandbox is not None:
+        kinds.append(
+            JobKind(
+                "python_analysis",
+                "Python analysis",
+                queue="sandbox",
+                soft_limit=90,
+                hard_limit=120,
+                validate=validate_python,
+                handler=python_analysis(runner, sandbox),
+                summarize=lambda params, result: (
+                    "Python analysis"
+                    + (f" on {', '.join(params['symbols'])}" if params["symbols"] else "")
+                ),
+                report=report_python,
+            )
+        )
     return {kind.name: kind for kind in kinds}

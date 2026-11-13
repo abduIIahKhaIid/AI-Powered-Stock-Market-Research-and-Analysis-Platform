@@ -61,6 +61,14 @@ class Settings(BaseSettings):
     job_results_dir: str = ".data/job-results"
     # Let the agent start background jobs from the chat (each one needs the user's approval).
     agent_jobs_enabled: bool = True
+
+    # Sandbox Runner (SCRUM-28): only the worker calls it, on the internal sandbox network.
+    # Empty sandbox_url turns Python analysis off.
+    sandbox_url: str = "http://sandbox:8200"
+    sandbox_token: str = ""
+    sandbox_timeout_seconds: float = 30.0
+    # How long the agent's run_python_analysis tool waits for the job before moving on.
+    agent_python_wait_seconds: float = 75.0
     # Policy (SCRUM-26). Tools needing approval beyond the built-in rules, as JSON list.
     agent_approval_tools: list[str] = []
     approval_timeout_seconds: float = 300.0

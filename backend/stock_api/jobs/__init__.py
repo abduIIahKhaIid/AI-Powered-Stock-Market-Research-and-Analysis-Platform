@@ -42,7 +42,16 @@ def get_event_source() -> EventSource:
 @lru_cache
 def get_registry() -> dict[str, JobKind]:
     settings = get_settings()
-    return build_registry(mcp_tool_runner(settings.mcp_server_url, settings.mcp_call_timeout))
+    sandbox = None
+    if settings.sandbox_url:
+        from ..sandbox_client import SandboxClient
+
+        sandbox = SandboxClient(
+            settings.sandbox_url, settings.sandbox_token, settings.sandbox_timeout_seconds
+        )
+    return build_registry(
+        mcp_tool_runner(settings.mcp_server_url, settings.mcp_call_timeout), sandbox
+    )
 
 
 @lru_cache
