@@ -168,7 +168,9 @@ describe("chart events", () => {
       { type: "chart", data: { ...chart, symbol: "MSFT" } },
       { type: "chart", data: { ...chart, period: "6mo" } },
     ]);
-    expect(message.charts?.map((c) => `${c.symbol}:${c.period}`)).toEqual(["MSFT:1mo", "AAPL:6mo"]);
+    expect(message.charts?.map((c) => `${c.symbol}:${c.kind === "price" ? c.period : ""}`)).toEqual(
+      ["MSFT:1mo", "AAPL:6mo"],
+    );
   });
 });
 

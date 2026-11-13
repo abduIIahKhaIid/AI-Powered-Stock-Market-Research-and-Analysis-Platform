@@ -783,6 +783,52 @@ a.source-name {
   }
 }
 
+/* ---------- Scenario chart (SCRUM-31) ---------- */
+
+.chart-subtitle {
+  margin-left: 8px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.scenario-plot {
+  height: 260px;
+}
+
+.scenario-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.scenario-table th,
+.scenario-table td {
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.scenario-table thead th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.scenario-table .num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.case-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 6px;
+  border-radius: 2px;
+  vertical-align: baseline;
+}
+
 /* ---------- Background job progress ---------- */
 
 .job-card {

@@ -127,7 +127,10 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
 
     case "chart": {
       const chart = event.data;
-      const others = (message.charts ?? []).filter((c) => c.symbol !== chart.symbol);
+      // One chart of each kind per symbol: a newer one replaces the older.
+      const others = (message.charts ?? []).filter(
+        (c) => c.kind !== chart.kind || c.symbol !== chart.symbol,
+      );
       return { ...message, charts: [...others, chart] };
     }
 

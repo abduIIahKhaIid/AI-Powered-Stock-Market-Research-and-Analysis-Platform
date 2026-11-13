@@ -9,7 +9,12 @@ export interface ScanColumn {
 export function isScanResult(value: unknown): value is ScanResult {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Partial<ScanResult>;
-  return Array.isArray(candidate.symbols) && typeof candidate.rows === "object";
+  return (
+    Array.isArray(candidate.symbols) &&
+    typeof candidate.rows === "object" &&
+    candidate.rows !== null &&
+    !Array.isArray(candidate.rows)
+  );
 }
 
 /** One column per indicator series, e.g. "rsi_14" or "macd: signal". */

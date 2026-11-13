@@ -390,6 +390,181 @@ def report_python(params: dict[str, Any], result: Any) -> str:
     return "\n".join(lines)
 
 
+# --- scenario sweep (SCRUM-31, SCRUM-75) --------------------------------------------------
+
+MAX_SWEEP_SYMBOLS = 5
+MAX_SWEEP_CASES = 25
+SWEEP_FIELDS = ("revenue_growth", "net_margin", "discount_rate", "terminal_growth", "horizon_years")
+
+
+def _case_name(case: dict[str, Any]) -> str:
+    short = {
+        "revenue_growth": "growth",
+        "net_margin": "margin",
+        "discount_rate": "discount",
+        "terminal_growth": "terminal",
+        "horizon_years": "years",
+    }
+    parts = [
+        f"{short[k]} {v:g}{'' if k == 'horizon_years' else '%'}"
+        for k, v in case.items()
+        if k in SWEEP_FIELDS
+    ]
+    return ", ".join(parts) or "base"
+
+
+def validate_sweep(params: dict[str, Any]) -> dict[str, Any]:
+    raw = params.get("symbols")
+    if not isinstance(raw, list) or not raw:
+        raise JobInputError("symbols must be a non-empty list of tickers.")
+    symbols = list(dict.fromkeys(str(s).strip().upper() for s in raw))
+    if len(symbols) > MAX_SWEEP_SYMBOLS:
+        raise JobInputError(f"Sweep at most {MAX_SWEEP_SYMBOLS} symbols at a time.")
+    bad = [s for s in symbols if not _TICKER.match(s)]
+    if bad:
+        raise JobInputError(f"Not valid tickers: {', '.join(bad)}.")
+
+    cases: list[dict[str, Any]] = []
+    grid = params.get("grid")
+    if grid:
+        if not isinstance(grid, dict) or not set(grid) <= set(SWEEP_FIELDS):
+            raise JobInputError(f"grid keys must be among {', '.join(SWEEP_FIELDS)}.")
+        combos: list[dict[str, Any]] = [{}]
+        for key, values in grid.items():
+            if not isinstance(values, list) or not values:
+                raise JobInputError(f"grid.{key} must be a non-empty list of numbers.")
+            combos = [combo | {key: value} for combo in combos for value in values]
+        cases = combos
+    elif params.get("cases"):
+        if not isinstance(params["cases"], list):
+            raise JobInputError("cases must be a list of assumption overrides.")
+        cases = [dict(case) for case in params["cases"] if isinstance(case, dict)]
+    else:
+        raise JobInputError("Give cases (a list of overrides) or grid (values to combine).")
+    if len(cases) > MAX_SWEEP_CASES:
+        raise JobInputError(f"At most {MAX_SWEEP_CASES} scenarios per sweep; got {len(cases)}.")
+    for case in cases:
+        unknown = sorted(set(case) - set(SWEEP_FIELDS) - {"name"})
+        if unknown:
+            raise JobInputError(f"Unknown assumptions: {', '.join(unknown)}.")
+        bad_values = [k for k in SWEEP_FIELDS if k in case and not _is_number(case[k])]
+        if bad_values:
+            raise JobInputError(f"{', '.join(bad_values)} must be numbers (percent).")
+        case.setdefault("name", _case_name(case))
+    base = params.get("assumptions") or {}
+    if not isinstance(base, dict):
+        raise JobInputError("assumptions must be an object.")
+    return {"symbols": symbols, "cases": cases, "assumptions": base}
+
+
+def _is_number(value: Any) -> bool:
+    return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+SWEEP_COLUMNS = (
+    "symbol",
+    "case",
+    "revenue_growth",
+    "net_margin",
+    "discount_rate",
+    "final_year",
+    "final_revenue",
+    "final_eps",
+    "value_per_share",
+    "vs_price_pct",
+)
+
+
+def scenario_sweep(runner: ToolRunner) -> Callable[[dict[str, Any], JobContext], Any]:
+    """Run each case for each symbol through run_scenario, reporting progress per scenario."""
+
+    def handle(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
+        symbols, cases = params["symbols"], params["cases"]
+        total = len(symbols) * len(cases)
+        rows: list[dict[str, Any]] = []
+        errors: dict[str, str] = {}
+        starting: dict[str, str] = {}
+        sources: dict[str, Any] = {}
+        done = 0
+        for symbol in symbols:
+            for case in cases:
+                ctx.progress(
+                    int(done / total * 100),
+                    f"Scenario {done + 1} of {total}: {symbol}, {case['name']}",
+                )
+                done += 1
+                if symbol in errors:
+                    continue
+                outcome = ctx.check(
+                    runner(
+                        "run_scenario",
+                        {"symbol": symbol, "assumptions": params["assumptions"], "cases": [case]},
+                    )
+                )
+                if not outcome.ok:
+                    errors[symbol] = outcome.error or "The scenario failed."
+                    continue
+                data = outcome.payload["data"]
+                starting.setdefault(symbol, data["assumptions"][0])
+                row = data["table"][0]
+                rows.append({"symbol": symbol, **{k: row.get(k) for k in SWEEP_COLUMNS[1:]}})
+                if outcome.source:
+                    sources[outcome.source] = outcome.as_of
+        ctx.progress(100, "Saving results")
+        ctx.save_file("scenario_sweep.csv", _rows_csv(rows), "text/csv")
+        return {
+            "symbols": symbols,
+            "cases": [case["name"] for case in cases],
+            "rows": rows,
+            "errors": errors,
+            "starting_points": starting,
+            "sources": [{"source": s, "as_of": a} for s, a in sources.items()],
+        }
+
+    return handle
+
+
+def _rows_csv(rows: list[dict[str, Any]]) -> str:
+    out = io.StringIO()
+    writer = csv.DictWriter(out, fieldnames=list(SWEEP_COLUMNS), lineterminator="\n")
+    writer.writeheader()
+    writer.writerows(rows)
+    return out.getvalue()
+
+
+def report_sweep(params: dict[str, Any], result: Any) -> str:
+    rows = result["rows"]
+    lines = [
+        f"**Scenario sweep finished**: {len(result['cases'])} scenarios for "
+        f"{', '.join(result['symbols'])}.",
+        "",
+        "| Symbol | Scenario | Value per share (USD) | vs price |",
+        "|---|---|---:|---:|",
+    ]
+    for row in rows[:15]:
+        vs = row["vs_price_pct"]
+        lines.append(
+            f"| {row['symbol']} | {row['case']} | {_value(row['value_per_share'])} | "
+            f"{'n/a' if vs is None else f'{vs:+.1f}%'} |"
+        )
+    if len(rows) > 15:
+        lines.append(f"\n{len(rows) - 15} more rows are in the CSV under Saved analyses.")
+    for symbol, error in result["errors"].items():
+        lines.append(f"\n- **{symbol}**: {error}")
+    lines.append("\n**Assumptions**")
+    lines += [f"- {line}" for line in result["starting_points"].values()]
+    lines.append(
+        "- Each scenario changes only the listed assumptions; the rest come from the base case."
+    )
+    sources = "; ".join(
+        f"{s['source']}, as of {str(s['as_of'])[:10]}" if s.get("as_of") else s["source"]
+        for s in result.get("sources", [])
+    )
+    if sources:
+        lines.append(f"\nSource: {sources}.")
+    return "\n".join(lines)
+
+
 def build_registry(runner: ToolRunner, sandbox: SandboxRunner | None = None) -> dict[str, JobKind]:
     kinds = [
         JobKind(
@@ -402,6 +577,19 @@ def build_registry(runner: ToolRunner, sandbox: SandboxRunner | None = None) -> 
             handler=indicator_scan(runner),
             summarize=summarize_scan,
             report=report_scan,
+        ),
+        JobKind(
+            "scenario_sweep",
+            "Scenario sweep",
+            queue="analysis",
+            soft_limit=180,
+            hard_limit=240,
+            validate=validate_sweep,
+            handler=scenario_sweep(runner),
+            summarize=lambda params, result: (
+                f"{len(params['cases'])} scenarios for " + ", ".join(params["symbols"])
+            ),
+            report=report_sweep,
         ),
         JobKind(
             "refresh_directory",

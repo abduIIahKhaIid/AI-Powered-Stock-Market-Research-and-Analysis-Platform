@@ -35,6 +35,37 @@ export interface ChartSpec {
   indicators?: string[];
 }
 
+/** One row of the scenario table returned by run_scenario (SCRUM-31). */
+export interface ScenarioRow {
+  case: string;
+  revenue_growth: number;
+  net_margin: number;
+  discount_rate: number;
+  final_year: number;
+  final_revenue: number;
+  final_eps: number;
+  value_per_share: number;
+  vs_price_pct: number | null;
+}
+
+/** Projected revenue per case, sent by the agent after run_scenario. */
+export interface ScenarioChartSpec {
+  kind: "scenario";
+  symbol: string;
+  name?: string | null;
+  metric: string;
+  unit: string;
+  base_year: number;
+  base_value: number;
+  series: { name: string; points: { year: number; value: number }[] }[];
+  table: ScenarioRow[];
+  price?: number | null;
+  source?: string | null;
+  as_of?: string | null;
+}
+
+export type AnyChartSpec = ChartSpec | ScenarioChartSpec;
+
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired";
 
 /** A sensitive action waiting for the user's decision (SCRUM-26). */
@@ -132,7 +163,7 @@ export type ChatEvent =
       };
     }
   | { type: "sources"; data: { sources: Source[] } }
-  | { type: "chart"; data: ChartSpec }
+  | { type: "chart"; data: AnyChartSpec }
   | {
       type: "job_started";
       data: { job_id: string; kind: string; title: string; conversation_id: string };
@@ -213,7 +244,7 @@ export interface AssistantMessage {
   disclaimer?: string;
   assumptions?: string[];
   grounding?: Grounding;
-  charts?: ChartSpec[];
+  charts?: AnyChartSpec[];
   approvals?: ApprovalItem[];
   jobs?: JobItem[];
   /** Set on the message that reports a finished background job. */

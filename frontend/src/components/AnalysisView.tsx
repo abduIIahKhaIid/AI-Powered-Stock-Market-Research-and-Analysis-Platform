@@ -58,6 +58,57 @@ function ScanTable({ scan }: { scan: ScanResult }) {
   );
 }
 
+type Row = Record<string, string | number | null>;
+
+/** Results with a list of flat rows, such as a scenario sweep. */
+function rowsOf(value: unknown): Row[] | null {
+  if (typeof value !== "object" || value === null) return null;
+  const rows = (value as { rows?: unknown }).rows;
+  if (!Array.isArray(rows) || rows.length === 0) return null;
+  const flat = rows.every(
+    (row) =>
+      typeof row === "object" &&
+      row !== null &&
+      Object.values(row).every((cell) => cell === null || typeof cell !== "object"),
+  );
+  return flat ? (rows as Row[]) : null;
+}
+
+function RowsTable({ rows }: { rows: Row[] }) {
+  const columns = Object.keys(rows[0]);
+  return (
+    <div className="table-wrap">
+      <table className="scan-table">
+        <thead>
+          <tr>
+            {columns.map((column) => (
+              <th scope="col" key={column}>
+                {column.replace(/_/g, " ")}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((row, index) => (
+            <tr key={index}>
+              {columns.map((column) => {
+                const cell = row[column];
+                return typeof cell === "number" ? (
+                  <td className="num" key={column}>
+                    {formatNumber(cell)}
+                  </td>
+                ) : (
+                  <td key={column}>{cell ?? "–"}</td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 /** Reopens a saved analysis: its result, its files and where the data came from. */
 export default function AnalysisView({ analysis, onClose }: Props) {
   const [data, setData] = useState<AnalysisResult | null>(null);
@@ -90,6 +141,7 @@ export default function AnalysisView({ analysis, onClose }: Props) {
   }, [onClose]);
 
   const scan = data && isScanResult(data.result) ? data.result : null;
+  const rows = data && !scan ? rowsOf(data.result) : null;
   const finished = new Date(analysis.finished_at ?? analysis.created_at).toLocaleString();
 
   return (
@@ -139,6 +191,8 @@ export default function AnalysisView({ analysis, onClose }: Props) {
             </p>
           ) : scan ? (
             <ScanTable scan={scan} />
+          ) : rows ? (
+            <RowsTable rows={rows} />
           ) : (
             <pre className="analysis-json">{JSON.stringify(data.result, null, 2)}</pre>
           )}

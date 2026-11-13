@@ -69,6 +69,9 @@ def system_prompt(mode: Mode, today: date | None = None) -> str:
             "volatility, simple backtests), write Python for run_python_analysis. It runs "
             "after the user approves it. Quote only numbers from its result, and describe "
             "the method in plain words.",
+            "13. For what-if questions about a company's outlook (slower growth, lower margins, "
+            "a different discount rate), use run_scenario. Quote its figures, name the case each "
+            "figure belongs to, and list its assumptions under Assumptions.",
             "",
             _MODE_RULES[mode],
         ]

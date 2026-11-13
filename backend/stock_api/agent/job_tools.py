@@ -7,7 +7,9 @@ user's approval before any job is queued (SCRUM-26).
 from __future__ import annotations
 
 import asyncio
+import time
 from collections.abc import Callable
+from dataclasses import replace
 from typing import Any
 
 from ..jobs.queue import Queue
@@ -15,6 +17,9 @@ from ..jobs.registry import (
     MAX_CODE_CHARS,
     MAX_PYTHON_SYMBOLS,
     MAX_SCAN_SYMBOLS,
+    MAX_SWEEP_CASES,
+    MAX_SWEEP_SYMBOLS,
+    SWEEP_FIELDS,
     JobInputError,
     JobKind,
 )
@@ -70,8 +75,10 @@ PYTHON_SPEC = ToolSpec(
         "high, low, close, volume. "
         "numpy, pandas, scipy, statsmodels and ta are installed. Set a variable named result "
         "to a JSON-serializable dict with the numbers to report; plots and images are not "
-        "returned. The code has no network access and may write only under /tmp; it is "
-        "stopped after 30 seconds. Report only numbers from the returned result."
+        "returned. With several symbols, keep each symbol's numbers under its own key, for "
+        "example {'AAPL': {'volatility': ...}, 'MSFT': {'volatility': ...}}. The code has no "
+        "network access and may write only under /tmp; it is stopped after 30 seconds. Report "
+        "only numbers from the returned result."
     ),
     input_schema={
         "type": "object",
@@ -97,7 +104,60 @@ PYTHON_SPEC = ToolSpec(
     },
 )
 
-TOOL_KINDS = {START_SCAN: "indicator_scan"}
+START_SWEEP = "start_job_scenario_sweep"
+
+_CASE_PROPERTIES = {
+    field: {"type": "number", "description": "percent" if field != "horizon_years" else "years"}
+    for field in SWEEP_FIELDS
+}
+
+SWEEP_SPEC = ToolSpec(
+    name=START_SWEEP,
+    description=(
+        "Start a background job that runs many what-if scenarios (more than 3, up to "
+        f"{MAX_SWEEP_CASES}) or the same scenarios for several symbols (up to "
+        f"{MAX_SWEEP_SYMBOLS}). Give either cases (a list, each with a name and the "
+        "assumptions it changes) or grid (for each assumption a list of values; every "
+        "combination becomes one scenario). Assumptions are in percent: revenue_growth, "
+        "net_margin, discount_rate, terminal_growth, plus horizon_years. Unchanged values "
+        "come from the base case, as in run_scenario. Returns a job id at once; progress per "
+        "scenario and a summary table appear in the chat when it finishes."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "symbols": {
+                "type": "array",
+                "items": {"type": "string"},
+                "minItems": 1,
+                "maxItems": MAX_SWEEP_SYMBOLS,
+            },
+            "cases": {
+                "type": "array",
+                "maxItems": MAX_SWEEP_CASES,
+                "items": {
+                    "type": "object",
+                    "properties": {"name": {"type": "string"}, **_CASE_PROPERTIES},
+                },
+            },
+            "grid": {
+                "type": "object",
+                "properties": {
+                    field: {"type": "array", "items": {"type": "number"}} for field in SWEEP_FIELDS
+                },
+            },
+            "assumptions": {
+                "type": "object",
+                "properties": _CASE_PROPERTIES,
+                "description": "Base-case values shared by every scenario.",
+            },
+        },
+        "required": ["symbols"],
+    },
+)
+
+TOOL_KINDS = {START_SCAN: "indicator_scan", START_SWEEP: "scenario_sweep"}
+SPECS = {START_SCAN: SCAN_SPEC, START_SWEEP: SWEEP_SPEC}
 # Tools that run a job and wait for its result, instead of leaving it in the background.
 WAITING_TOOL_KINDS = {RUN_PYTHON: "python_analysis"}
 
@@ -161,14 +221,17 @@ class JobToolbox:
         self.wait_seconds = wait_seconds
 
     async def list_tools(self) -> list[ToolSpec]:
-        specs = [*await self.inner.list_tools(), SCAN_SPEC]
+        specs = [*await self.inner.list_tools()]
+        specs += [spec for name, spec in SPECS.items() if self.launcher.offers(TOOL_KINDS[name])]
         if self.launcher.offers("python_analysis"):
             specs.append(PYTHON_SPEC)
         return specs
 
     async def call(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
         if name in WAITING_TOOL_KINDS:
-            return await self._run_and_wait(name, WAITING_TOOL_KINDS[name], arguments)
+            started = time.perf_counter()
+            outcome = await self._run_and_wait(name, WAITING_TOOL_KINDS[name], arguments)
+            return replace(outcome, latency_ms=int((time.perf_counter() - started) * 1000))
         kind_name = TOOL_KINDS.get(name)
         if kind_name is None:
             return await self.inner.call(name, arguments)
