@@ -57,6 +57,9 @@ export default function App() {
 
   return (
     <div className="app">
+      <a className="skip-link" href="#chat-input">
+        Skip to the message box
+      </a>
       <Sidebar
         conversations={chat.conversations}
         activeId={active?.id ?? null}

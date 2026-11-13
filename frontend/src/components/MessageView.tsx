@@ -40,6 +40,21 @@ function SourceList({ sources }: { sources: Source[] }) {
   );
 }
 
+/** Shown on every projection and what-if answer (SCRUM-38). */
+function ProjectionBanner() {
+  return (
+    <aside className="disclaimer-banner" aria-label="Projection disclaimer">
+      <span className="disclaimer-icon" aria-hidden="true">
+        !
+      </span>
+      <p>
+        <strong>Projection, not a prediction.</strong> These figures follow from the assumptions
+        listed with this answer. They are educational information, not financial advice.
+      </p>
+    </aside>
+  );
+}
+
 function AssumptionList({ items }: { items: string[] }) {
   return (
     <section className="sources assumptions" aria-label="Assumptions">
@@ -86,6 +101,7 @@ function Assistant({ message }: { message: AssistantMessage }) {
       className={message.reportFor ? "message assistant job-report" : "message assistant"}
       aria-busy={live}
     >
+      {message.projection && <ProjectionBanner />}
       {message.tools.length > 0 && <ToolTimeline tools={message.tools} live={live} />}
       {message.approvals?.map((item) => (
         <ApprovalCard key={item.id} item={item} />
