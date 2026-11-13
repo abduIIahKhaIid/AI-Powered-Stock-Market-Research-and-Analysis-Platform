@@ -33,6 +33,16 @@ def test_reads_input_files_and_returns_json() -> None:
     }
 
 
+def test_code_runs_in_the_input_folder() -> None:
+    import os
+
+    before = os.getcwd()
+    envelope = harness.run(
+        {"code": "result = open('prices_AAPL.csv').read()", "files": {"prices_AAPL.csv": "x,1"}}
+    )
+    assert envelope["result"] == "x,1" and os.getcwd() == before
+
+
 def test_numpy_and_pandas_values_become_json() -> None:
     frame = pd.DataFrame(
         {"close": [1.0, float("nan")]}, index=pd.to_datetime(["2026-11-12", "2026-11-13"])

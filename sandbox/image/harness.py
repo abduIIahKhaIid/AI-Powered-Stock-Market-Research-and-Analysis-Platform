@@ -74,6 +74,9 @@ def run(request: dict[str, Any]) -> dict[str, Any]:
     captured = io.StringIO()
     namespace: dict[str, Any] = {"__name__": "__main__", "INPUT_DIR": INPUT_DIR}
     envelope: dict[str, Any] = {"ok": False, "result": None, "stdout": "", "error": None}
+    previous = os.getcwd()
+    # Run in the input folder, so open("prices_AAPL.csv") works as well as the full path.
+    os.chdir(INPUT_DIR)
     try:
         with contextlib.redirect_stdout(captured), contextlib.redirect_stderr(captured):
             exec(compile(request["code"], "analysis.py", "exec"), namespace)  # noqa: S102
@@ -87,6 +90,8 @@ def run(request: dict[str, Any]) -> dict[str, Any]:
         envelope["error"] = f"SystemExit: the code called exit({exc.code})"
     except BaseException as exc:  # noqa: BLE001 - every failure is reported in the envelope
         envelope["error"] = _error(exc)
+    finally:
+        os.chdir(previous)
     envelope["stdout"] = captured.getvalue()[-MAX_STDOUT:]
     return envelope
 

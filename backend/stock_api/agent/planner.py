@@ -10,7 +10,7 @@ import logging
 import uuid
 from collections.abc import AsyncIterator, Callable
 from contextlib import AbstractAsyncContextManager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import date
 from typing import Any
 
@@ -27,6 +27,7 @@ from .context import (
 )
 from .grounding import FIX_PROMPT, Evidence, GroundingReport, check_answer, remove_ungrounded
 from .policy import JOB_PREFIXES, ToolPolicy
+from .text_tools import tool_call_in_text
 from .toolbox import Toolbox, ToolOutcome, compact_for_model
 
 logger = logging.getLogger("stock_api.agent")
@@ -228,6 +229,13 @@ class Agent:
                         if result is None:
                             raise LLMError("the model stream ended without a result")
                         totals.add(result)
+
+                        if not result.tool_calls and not final_step and tools:
+                            # A small model may write the tool call as text; run it anyway.
+                            written = tool_call_in_text(result.content, known)
+                            if written is not None:
+                                logger.info("agent: tool call %s was written as text", written.name)
+                                result = replace(result, content="", tool_calls=[written])
 
                         if not result.tool_calls or final_step:
                             answer = result.content.strip()
