@@ -5,8 +5,8 @@ description = "AI-Powered Stock Market Research and Analysis Platform (NASDAQ)"
 requires-python = ">=3.12"
 
 [tool.pytest.ini_options]
-pythonpath = ["backend", "mcp_server"]
-testpaths = ["backend/tests", "mcp_server/tests"]
+pythonpath = ["backend", "mcp_server", "sandbox/runner", "sandbox/image", "sandbox/tests"]
+testpaths = ["backend/tests", "mcp_server/tests", "sandbox/tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
 
@@ -19,10 +19,10 @@ extend-exclude = [".venv", ".venv-linux", ".tmp", "frontend", "docs"]
 select = ["E", "F", "I", "UP", "B", "BLE"]
 
 [tool.ruff.lint.isort]
-known-first-party = ["stock_api", "financial_mcp"]
+known-first-party = ["stock_api", "financial_mcp", "sandbox_runner", "harness"]
 
 [tool.mypy]
 python_version = "3.12"
 ignore_missing_imports = true
-mypy_path = ["backend", "mcp_server"]
+mypy_path = ["backend", "mcp_server", "sandbox/runner", "sandbox/image"]
 explicit_package_bases = true

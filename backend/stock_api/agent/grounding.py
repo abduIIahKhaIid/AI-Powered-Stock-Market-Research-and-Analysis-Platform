@@ -63,6 +63,9 @@ _MASKS = [
         re.I,
     ),
     re.compile(r"\b(?:SMA|EMA|RSI|MACD|MA|BB)\s?\(?\d+(?:\s?,\s?\d+)*\)?", re.I),
+    # Ids such as a background job id (9754478b6e73...) and names such as rsi_14.
+    re.compile(r"\b(?=[0-9a-f]*[a-f])[0-9a-f]*\d[0-9a-f]{6,}\b"),
+    re.compile(r"\b[A-Za-z]+_\d+\b"),
 ]
 
 _HYPOTHETICAL = re.compile(

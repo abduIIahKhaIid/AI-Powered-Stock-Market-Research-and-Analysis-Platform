@@ -257,7 +257,7 @@ def report_scan(params: dict[str, Any], result: Any) -> str:
             + "; ".join(values)
         )
         if row.get("signals"):
-            line += ". Signals: " + "; ".join(row["signals"])
+            line += ". Signals: " + "; ".join(s.rstrip(".") for s in row["signals"])
         lines.append(line + ".")
     sources = "; ".join(
         f"{s['source']}, as of {str(s['as_of'])[:10]}" if s.get("as_of") else s["source"]
