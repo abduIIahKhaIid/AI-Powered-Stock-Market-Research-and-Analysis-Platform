@@ -65,8 +65,9 @@ PYTHON_SPEC = ToolSpec(
     description=(
         "Run Python code in an isolated sandbox for calculations the other tools cannot do, "
         "such as custom statistics, correlations, volatility or simple backtests. The daily "
-        "price history of each symbol you list is in the file "
-        "INPUT_DIR + '/prices_<SYMBOL>.csv' with columns date, open, high, low, close, volume. "
+        "price history of each symbol you list is in the file prices_<SYMBOL>.csv in the "
+        "current folder (also INPUT_DIR + '/prices_<SYMBOL>.csv'), with columns date, open, "
+        "high, low, close, volume. "
         "numpy, pandas, scipy, statsmodels and ta are installed. Set a variable named result "
         "to a JSON-serializable dict with the numbers to report; plots and images are not "
         "returned. The code has no network access and may write only under /tmp; it is "

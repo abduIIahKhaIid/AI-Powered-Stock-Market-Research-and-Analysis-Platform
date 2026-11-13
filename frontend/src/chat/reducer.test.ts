@@ -196,4 +196,18 @@ describe("approval events", () => {
     });
     expect(decided.approvals?.[0].status).toBe("approved");
   });
+
+  it("drops a tool call the model wrote as text instead of keeping it as a note", () => {
+    let message = newAssistantMessage("m", "simple");
+    message = applyEvent(message, {
+      type: "token",
+      data: { text: '{"name": "run_python_analysis", "arguments": {}}', step: 1 },
+    });
+    message = applyEvent(message, {
+      type: "tool_call",
+      data: { id: "t1", name: "run_python_analysis", arguments: {}, step: 1 },
+    });
+    expect(message.text).toBe("");
+    expect(message.tools[0].note).toBeUndefined();
+  });
 });

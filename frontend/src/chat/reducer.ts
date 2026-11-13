@@ -64,7 +64,9 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
       const { id, name, arguments: args, step } = event.data;
       // Text streamed in this step was the model thinking out loud before calling a tool,
       // not the answer: keep it with the tool in the timeline.
-      const preamble = message.textStep === step ? message.text.trim() : "";
+      const streamed = message.textStep === step ? message.text.trim() : "";
+      // A small model may write the tool call itself as JSON text; that is not a note.
+      const preamble = /^(```|\{|<tool_call>)/.test(streamed) ? "" : streamed;
       const tool: ToolStep = {
         id,
         name,
@@ -75,7 +77,7 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
       };
       return {
         ...message,
-        text: preamble ? "" : message.text,
+        text: streamed ? "" : message.text,
         tools: [...message.tools, tool],
         statusText: `${toolLabel(name)}…`,
       };
