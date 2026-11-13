@@ -1,7 +1,7 @@
-"""Harness tools that start background jobs from the chat (SCRUM-33).
+"""Harness tools that start background jobs from the chat (SCRUM-33, SCRUM-28).
 
-The tool names start with ``start_job`` so the policy asks for the user's approval
-before any job is queued (SCRUM-26).
+The tool names start with ``start_job`` or ``run_python``, so the policy asks for the
+user's approval before any job is queued (SCRUM-26).
 """
 
 from __future__ import annotations
@@ -11,7 +11,13 @@ from collections.abc import Callable
 from typing import Any
 
 from ..jobs.queue import Queue
-from ..jobs.registry import MAX_SCAN_SYMBOLS, JobInputError, JobKind
+from ..jobs.registry import (
+    MAX_CODE_CHARS,
+    MAX_PYTHON_SYMBOLS,
+    MAX_SCAN_SYMBOLS,
+    JobInputError,
+    JobKind,
+)
 from ..jobs.store import Job, JobStore
 from .toolbox import Toolbox, ToolOutcome, ToolSpec
 
@@ -52,7 +58,47 @@ SCAN_SPEC = ToolSpec(
     },
 )
 
+RUN_PYTHON = "run_python_analysis"
+
+PYTHON_SPEC = ToolSpec(
+    name=RUN_PYTHON,
+    description=(
+        "Run Python code in an isolated sandbox for calculations the other tools cannot do, "
+        "such as custom statistics, correlations, volatility or simple backtests. The daily "
+        "price history of each symbol you list is in the file "
+        "INPUT_DIR + '/prices_<SYMBOL>.csv' with columns date, open, high, low, close, volume. "
+        "numpy, pandas, scipy, statsmodels and ta are installed. Set a variable named result "
+        "to a JSON-serializable dict with the numbers to report; plots and images are not "
+        "returned. The code has no network access and may write only under /tmp; it is "
+        "stopped after 30 seconds. Report only numbers from the returned result."
+    ),
+    input_schema={
+        "type": "object",
+        "properties": {
+            "code": {
+                "type": "string",
+                "maxLength": MAX_CODE_CHARS,
+                "description": "Python source that sets the variable result.",
+            },
+            "symbols": {
+                "type": "array",
+                "items": {"type": "string"},
+                "maxItems": MAX_PYTHON_SYMBOLS,
+                "description": "NASDAQ tickers whose price history the code reads.",
+            },
+            "period": {
+                "type": "string",
+                "enum": ["1mo", "3mo", "6mo", "ytd", "1y", "2y", "5y"],
+                "description": "How much daily price history to provide. Defaults to 1y.",
+            },
+        },
+        "required": ["code"],
+    },
+)
+
 TOOL_KINDS = {START_SCAN: "indicator_scan"}
+# Tools that run a job and wait for its result, instead of leaving it in the background.
+WAITING_TOOL_KINDS = {RUN_PYTHON: "python_analysis"}
 
 
 class JobLauncher:
@@ -84,19 +130,44 @@ class JobLauncher:
         kind = self._registry().get(kind_name)
         return kind.title if kind else kind_name
 
+    def offers(self, kind_name: str) -> bool:
+        return kind_name in self._registry()
+
+    async def wait(self, job_id: str, timeout: float, poll: float = 0.5) -> Job:
+        """The job once it finished, or as it is when `timeout` runs out."""
+        store = self._store()
+        deadline = asyncio.get_running_loop().time() + timeout
+        while True:
+            job = await asyncio.to_thread(store.get, job_id)
+            if job.done or asyncio.get_running_loop().time() >= deadline:
+                return job
+            await asyncio.sleep(poll)
+
 
 class JobToolbox:
     """An MCP toolbox plus the job tools, bound to one conversation."""
 
-    def __init__(self, inner: Toolbox, launcher: JobLauncher, conversation_id: str) -> None:
+    def __init__(
+        self,
+        inner: Toolbox,
+        launcher: JobLauncher,
+        conversation_id: str,
+        wait_seconds: float = 75.0,
+    ) -> None:
         self.inner = inner
         self.launcher = launcher
         self.conversation_id = conversation_id
+        self.wait_seconds = wait_seconds
 
     async def list_tools(self) -> list[ToolSpec]:
-        return [*await self.inner.list_tools(), SCAN_SPEC]
+        specs = [*await self.inner.list_tools(), SCAN_SPEC]
+        if self.launcher.offers("python_analysis"):
+            specs.append(PYTHON_SPEC)
+        return specs
 
     async def call(self, name: str, arguments: dict[str, Any]) -> ToolOutcome:
+        if name in WAITING_TOOL_KINDS:
+            return await self._run_and_wait(name, WAITING_TOOL_KINDS[name], arguments)
         kind_name = TOOL_KINDS.get(name)
         if kind_name is None:
             return await self.inner.call(name, arguments)
@@ -121,4 +192,44 @@ class JobToolbox:
                 "note": "Started in the background. Progress and results will appear in the "
                 "chat; no results are available yet.",
             },
+        )
+
+    async def _run_and_wait(
+        self, name: str, kind_name: str, arguments: dict[str, Any]
+    ) -> ToolOutcome:
+        try:
+            job = await self.launcher.start(kind_name, arguments, self.conversation_id)
+        except JobInputError as exc:
+            return ToolOutcome.failure(name, arguments, str(exc))
+        except Exception as exc:  # noqa: BLE001
+            return ToolOutcome.failure(
+                name, arguments, f"The job could not be queued ({type(exc).__name__}: {exc})."
+            )
+        job = await self.launcher.wait(job.id, self.wait_seconds)
+        if job.status == "succeeded" and isinstance(job.result, dict):
+            data = job.result
+            sources = data.get("sources") or []
+            price = sources[0] if sources else None
+            return ToolOutcome(
+                name=name,
+                arguments=arguments,
+                ok=True,
+                payload={
+                    "job_id": job.id,
+                    "data": {"result": data.get("result"), "stdout": data.get("stdout", "")},
+                    "inputs": data.get("inputs", []),
+                    "source": "Python sandbox"
+                    + (f" on {price['source']} price data" if price else ""),
+                    "as_of": price.get("as_of") if price else None,
+                },
+            )
+        if job.status in ("failed", "cancelled"):
+            return ToolOutcome.failure(
+                name, arguments, job.error or f"The analysis was {job.status}."
+            )
+        return ToolOutcome.failure(
+            name,
+            arguments,
+            f"The analysis is still running (job {job.id}). Its result will be added to "
+            "this conversation when it finishes; do not guess it.",
         )

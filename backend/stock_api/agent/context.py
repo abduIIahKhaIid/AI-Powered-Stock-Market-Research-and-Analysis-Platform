@@ -65,6 +65,10 @@ def system_prompt(mode: Mode, today: date | None = None) -> str:
             "with start_job_indicator_scan. It runs after the user approves it; tell the user "
             "it has started and that its progress and results will appear in the chat. Do not "
             "state any figures from a job that has not finished.",
+            "12. For calculations the other tools cannot do (custom statistics, correlation, "
+            "volatility, simple backtests), write Python for run_python_analysis. It runs "
+            "after the user approves it. Quote only numbers from its result, and describe "
+            "the method in plain words.",
             "",
             _MODE_RULES[mode],
         ]

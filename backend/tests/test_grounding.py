@@ -50,6 +50,8 @@ def texts(answer: str) -> list[str]:
         ("From the 10-K and 10-Q filings (and an 8-K, 20-F, 10-K/A)", []),
         ("For example, a $30 stock earning $2 has a P/E of 15.", []),
         ("Ticker BRK.B and ratio 45.2", ["45.2"]),
+        ("Job 9754478b6e734bd7b8cf4cb9f0eac218 started; rsi_14 and sma_50 are 61.2", ["61.2"]),
+        ("Revenue 1234567 and id deadbeef", ["1234567"]),
     ],
 )
 def test_extract_numbers(answer: str, expected: list[str]) -> None:
