@@ -58,6 +58,7 @@ The Financial Analysis MCP server (`http://localhost:8100/mcp`) currently offers
 | `get_valuation_metrics(symbol)` | Price, market cap, P/E, P/S, EV/EBITDA, margins, revenue and EPS growth, each with formula and sourced inputs |
 | `get_earnings(symbol)` | Diluted/basic EPS and net income for 5 years and 8 quarters, next earnings date |
 | `compare_stocks(symbols, metrics)` | 2 to 5 symbols side by side, one row per metric, a source per cell |
+| `run_scenario(symbol, assumptions, cases)` | Base, bull and bear projections (revenue, net income, EPS, DCF-style value per share) with every assumption listed |
 | `ping()` | Connectivity check |
 
 SEC data needs `SEC_USER_AGENT` in `.env` set to your name and a contact email (an SEC requirement);
@@ -170,6 +171,16 @@ stream sends `approval_required`, the UI shows a card, and `POST /approvals/{id}
 
 Job kinds: `indicator_scan` (indicators for up to 10 symbols, 120 s soft / 150 s hard limit) and
 `refresh_directory` (run daily by Celery Beat on the `ingest` queue).
+
+**What-if scenarios.** `run_scenario` (MCP) projects one company from its latest fiscal year in
+SEC filings. You can set revenue growth, net margin, discount rate, terminal growth and the
+horizon; any you leave out come from the last fiscal year or a default. It returns base, bull
+and bear cases, or up to 3 cases of your own. For each case you get yearly revenue, net income
+and EPS and a DCF-style value per share, and every assumption is listed with the answer. The
+chat shows a scenario chart (Recharts) with the case table. Sweeps with more than 3 scenarios
+or several symbols (`start_job_scenario_sweep`: a grid or a list of cases, up to 25 scenarios
+and 5 symbols) run as a background job, with progress per scenario and a CSV under Saved
+analyses.
 
 **Python sandbox.** For calculations no other tool covers (volatility, correlation, simple
 backtests), the agent writes Python and calls `run_python_analysis`. That needs your

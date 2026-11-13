@@ -127,4 +127,33 @@ describe("Saved analyses", () => {
     });
     expect(columns.map((c) => c.label)).toEqual(["sma_50", "bbands: upper", "bbands: lower"]);
   });
+
+  it("shows a scenario sweep as a table of rows", async () => {
+    const sweep: SavedAnalysis = { ...SAVED[0], kind: "scenario_sweep", title: "Scenario sweep" };
+    mockApi({
+      "/api/analyses": () => Response.json([sweep]),
+      [`/api/jobs/${JOB_ID}/result`]: () =>
+        Response.json({
+          job: RESULT.job,
+          result: {
+            symbols: ["AAPL"],
+            cases: ["growth 2%"],
+            rows: [
+              { symbol: "AAPL", case: "growth 2%", value_per_share: 98.456, vs_price_pct: null },
+            ],
+            errors: {},
+          },
+        }),
+    });
+    render(<App />);
+    const list = await screen.findByRole("region", { name: "Saved analyses" });
+    fireEvent.click(within(list).getByRole("button", { name: /Scenario sweep/ }));
+    const table = await within(await screen.findByRole("dialog")).findByRole("table");
+    expect(
+      within(table)
+        .getAllByRole("columnheader")
+        .map((c) => c.textContent),
+    ).toEqual(["symbol", "case", "value per share", "vs price pct"]);
+    expect(within(table).getByRole("row", { name: /growth 2%/ })).toHaveTextContent("98.46");
+  });
 });

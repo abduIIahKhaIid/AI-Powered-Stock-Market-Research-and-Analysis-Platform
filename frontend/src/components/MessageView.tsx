@@ -6,8 +6,9 @@ import JobCard from "./JobCard";
 import Markdown from "./Markdown";
 import ToolTimeline from "./ToolTimeline";
 
-// The chart library is large; load it only when an answer has a chart.
+// The chart libraries are large; load them only when an answer has a chart.
 const PriceChart = lazy(() => import("./PriceChart"));
+const ScenarioChart = lazy(() => import("./ScenarioChart"));
 
 function SourceList({ sources }: { sources: Source[] }) {
   return (
@@ -120,9 +121,13 @@ function Assistant({ message }: { message: AssistantMessage }) {
 
       {message.charts && message.charts.length > 0 && (
         <Suspense fallback={<p className="muted small">Loading chart…</p>}>
-          {message.charts.map((chart) => (
-            <PriceChart key={chart.symbol} spec={chart} />
-          ))}
+          {message.charts.map((chart) =>
+            chart.kind === "scenario" ? (
+              <ScenarioChart key={`scenario-${chart.symbol}`} spec={chart} />
+            ) : (
+              <PriceChart key={`price-${chart.symbol}`} spec={chart} />
+            ),
+          )}
         </Suspense>
       )}
       {message.grounding && message.state === "done" && (

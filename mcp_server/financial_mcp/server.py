@@ -33,6 +33,7 @@ from financial_mcp.market_data import (
     build_quote,
     validate_period_interval,
 )
+from financial_mcp.scenarios import MAX_INLINE_CASES, ScenarioError, run_scenarios, starting_point
 from financial_mcp.sec import SOURCE_LABEL as SEC_SOURCE
 from financial_mcp.sec import SecError, build_statement
 from financial_mcp.services import get_services
@@ -55,7 +56,7 @@ from financial_mcp.valuation import (
 )
 
 SERVER_NAME = "financial-analysis"
-SERVER_VERSION = "0.3.0"
+SERVER_VERSION = "0.4.0"
 
 mcp = MCPServer(
     name=SERVER_NAME,
@@ -345,6 +346,56 @@ def compare_stocks(symbols: list[str], metrics: list[str] | None = None) -> dict
     table = compare_table(results, keys)
     as_of = max(r["inputs"]["price"]["as_of"] for r in results.values() if not isinstance(r, str))
     return envelope(table, source=f"{SEC_SOURCE}; latest closing prices", as_of=as_of)
+
+
+def scenario_result(
+    symbol: str,
+    assumptions: dict[str, Any] | None,
+    cases: list[dict[str, Any]] | None,
+    limit: int = MAX_INLINE_CASES,
+) -> dict[str, Any]:
+    """Shared by run_scenario and the background scenario sweep."""
+    listing = _require_listing(symbol)
+    sec, prices = _sec_and_prices()
+    try:
+        fund = fundamentals(sec, listing["symbol"])
+        price = latest_price(prices, listing["symbol"])
+        start = starting_point(fund, price)
+        result = run_scenarios(listing["symbol"], fund["name"], start, assumptions, cases, limit)
+    except (SecError, PriceDataError, ScenarioError) as exc:
+        raise ToolError(f"{listing['symbol']}: {exc}") from exc
+    return envelope(
+        result,
+        source=f"{SEC_SOURCE}; {price['source']}",
+        as_of=price["as_of"],
+        units={
+            "revenue_net_income_value": "USD",
+            "rates": "percent",
+            "value_per_share": "USD per share",
+        },
+    )
+
+
+@mcp.tool(
+    description=(
+        "What-if projection for one NASDAQ symbol with base, bull and bear cases. Starts from "
+        "the latest fiscal year in SEC filings (revenue, net income, shares) and the latest "
+        "close. Optional assumptions, all in percent: revenue_growth (a year), net_margin, "
+        "discount_rate, terminal_growth, and horizon_years (1-10). Missing growth and margin "
+        "come from the last fiscal year; discount rate defaults to 9% and terminal growth to "
+        "2.5%, horizon to 5 years. Bull and bear move growth by 3, margin by 2 and discount "
+        "rate by 1 percentage point. Or pass up to 3 cases, each with a name and the "
+        "assumptions it changes. Returns yearly revenue, net income and EPS, a DCF-style "
+        "value per share for each case, and every assumption to list with the answer. For "
+        "more than 3 cases or several symbols use start_job_scenario_sweep."
+    )
+)
+def run_scenario(
+    symbol: str,
+    assumptions: dict[str, float] | None = None,
+    cases: list[dict[str, Any]] | None = None,
+) -> dict[str, Any]:
+    return scenario_result(symbol, assumptions, cases)
 
 
 @mcp.custom_route("/health", methods=["GET"])

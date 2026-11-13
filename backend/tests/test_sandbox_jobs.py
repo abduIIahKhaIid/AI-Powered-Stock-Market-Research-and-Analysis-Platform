@@ -10,7 +10,7 @@ from fakes import fake_services
 from financial_mcp.server import mcp as financial_mcp_server
 from financial_mcp.services import set_services
 from stock_api import sandbox_client
-from stock_api.agent.job_tools import RUN_PYTHON, START_SCAN, JobLauncher, JobToolbox
+from stock_api.agent.job_tools import RUN_PYTHON, START_SCAN, START_SWEEP, JobLauncher, JobToolbox
 from stock_api.agent.policy import ToolPolicy
 from stock_api.agent.toolbox import ToolOutcome, ToolSpec
 from stock_api.jobs.registry import (
@@ -196,7 +196,7 @@ def toolbox_for(sandbox: FakeSandbox, wait: float = 5.0) -> JobToolbox:
 async def test_run_python_waits_for_the_result(market: None) -> None:
     toolbox = toolbox_for(FakeSandbox({"ok": True, "result": {"vol": 0.21}, "stdout": "hi"}))
     names = [spec.name for spec in await toolbox.list_tools()]
-    assert names == ["get_quote", START_SCAN, RUN_PYTHON]
+    assert names == ["get_quote", START_SCAN, START_SWEEP, RUN_PYTHON]
     outcome = await toolbox.call(RUN_PYTHON, {"code": CODE, "symbols": ["AAPL"], "period": "1mo"})
     assert outcome.ok
     assert outcome.payload["data"] == {"result": {"vol": 0.21}, "stdout": "hi"}
