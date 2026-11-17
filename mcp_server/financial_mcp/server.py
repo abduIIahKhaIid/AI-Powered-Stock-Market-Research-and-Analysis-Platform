@@ -6,6 +6,7 @@ Every tool returns {data, source, as_of, units} so answers can always cite their
 Run locally:  python -m financial_mcp.server   (listens on MCP_HOST:MCP_PORT, path /mcp)
 """
 
+import logging
 import os
 from datetime import date
 from typing import Any
@@ -20,6 +21,7 @@ from starlette.responses import JSONResponse
 
 from financial_mcp.alpha_vantage import SOURCE_LABEL as AV_SOURCE
 from financial_mcp.alpha_vantage import AlphaVantageError, company_overview
+from financial_mcp.cache import QUOTE_TTL, cached_tool, clear_symbol, price_ttl
 from financial_mcp.envelope import envelope
 from financial_mcp.indicators import (
     EXPLANATIONS,
@@ -57,8 +59,10 @@ from financial_mcp.valuation import (
     valuation_metrics,
 )
 
+logger = logging.getLogger("financial_mcp.server")
+
 SERVER_NAME = "financial-analysis"
-SERVER_VERSION = "0.5.0"
+SERVER_VERSION = "0.6.0"
 
 mcp = MCPServer(
     name=SERVER_NAME,
@@ -110,6 +114,7 @@ def search_symbol(query: str, limit: int = 10) -> dict[str, Any]:
         "and change versus the previous trading day. Data may be delayed."
     )
 )
+@cached_tool(QUOTE_TTL, lambda: get_services().cache)
 def get_quote(symbol: str) -> dict[str, Any]:
     listing = _require_listing(symbol)
     services = get_services()
@@ -134,6 +139,7 @@ def get_quote(symbol: str) -> dict[str, Any]:
         "Prices are not adjusted for splits or dividends."
     )
 )
+@cached_tool(price_ttl, lambda: get_services().cache)
 def get_price_history(symbol: str, period: str = "6mo", interval: str = "1d") -> dict[str, Any]:
     listing = _require_listing(symbol)
     try:
@@ -181,6 +187,7 @@ DAILY_OR_LONGER = ("1d", "1wk", "1mo")
         "indicator for beginners. period and interval as in get_price_history."
     )
 )
+@cached_tool(price_ttl, lambda: get_services().cache)
 def compute_indicators(
     symbol: str,
     indicators: list[str] | None = None,
@@ -251,11 +258,71 @@ def get_financial_statements(
         data = build_statement(sec.company_facts(cik), cik, statement, freq, count)
     except SecError as exc:
         raise ToolError(str(exc)) from exc
+    _save_statement(listing["symbol"], cik, data)
     return envelope(
         {"symbol": listing["symbol"], "name": filer_name, "cik": cik, **data},
         source=SEC_SOURCE,
         as_of=data["latest_filed"],
         units={"values": "USD; EPS in USD per share; shares in shares"},
+    )
+
+
+def _save_statement(symbol: str, cik: int, data: dict[str, Any]) -> int:
+    store = get_services().store
+    if store is None:
+        return 0
+    try:
+        return store.save_statement(symbol, cik, data)
+    except Exception as exc:  # noqa: BLE001 - durable storage is best effort
+        logger.warning("could not save %s facts for %s: %s", data.get("statement"), symbol, exc)
+        return 0
+
+
+REFRESH_STATEMENTS = (("annual", 5), ("quarterly", 8))
+
+
+@mcp.tool(
+    description=(
+        "Maintenance (not for answering questions): fetch fresh daily prices and SEC "
+        "statements for one symbol, save them to Postgres and clear its cached tool results. "
+        "Run daily by the scheduler for the watched symbols."
+    )
+)
+def refresh_market_data(symbol: str) -> dict[str, Any]:
+    listing = _require_listing(symbol)
+    services = get_services()
+    cleared = clear_symbol(services.cache, listing["symbol"]) if services.cache else 0
+    try:
+        candles = services.prices.history(listing["symbol"], period="1y", interval="1d")
+    except PriceDataError as exc:
+        raise ToolError(str(exc)) from exc
+    facts = 0
+    problems: list[str] = []
+    if services.sec is not None:
+        try:
+            cik, _ = services.sec.lookup(listing["symbol"])
+            company = services.sec.company_facts(cik)
+            for statement in ("income", "balance", "cash_flow"):
+                for freq, count in REFRESH_STATEMENTS:
+                    try:
+                        data = build_statement(company, cik, statement, freq, count)
+                    except SecError as exc:
+                        problems.append(f"{statement} {freq}: {exc}")
+                        continue
+                    facts += _save_statement(listing["symbol"], cik, data)
+        except SecError as exc:
+            problems.append(str(exc))
+    return envelope(
+        {
+            "symbol": listing["symbol"],
+            "daily_bars": len(candles),
+            "last_bar": candles[-1].time if candles else None,
+            "facts_saved": facts,
+            "cache_entries_cleared": cleared,
+            "problems": problems,
+        },
+        source=services.prices.source,
+        as_of=candles[-1].time if candles else None,
     )
 
 

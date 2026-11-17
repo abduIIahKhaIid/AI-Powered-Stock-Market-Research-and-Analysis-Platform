@@ -67,6 +67,8 @@ class Settings(BaseSettings):
     sandbox_url: str = "http://sandbox:8200"
     sandbox_token: str = ""
     sandbox_timeout_seconds: float = 30.0
+    # Symbols whose prices and SEC facts Celery Beat refreshes every day (SCRUM-23).
+    watched_symbols: list[str] = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA"]
     # How long the agent's run_python_analysis tool waits for the job before moving on.
     agent_python_wait_seconds: float = 75.0
     # Policy (SCRUM-26). Tools needing approval beyond the built-in rules, as JSON list.

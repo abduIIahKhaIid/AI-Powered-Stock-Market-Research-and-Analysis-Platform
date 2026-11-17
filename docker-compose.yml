@@ -42,6 +42,13 @@ services:
       - mcpcache:/home/appuser/.cache/financial_mcp
     ports:
       - "127.0.0.1:8100:8100"
+    # Redis caches tool results; Postgres keeps ohlcv_daily and financial_facts (SCRUM-23).
+    # Both are optional at runtime: the tools still answer if either is down.
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8100/health', timeout=2)"]
       interval: 10s
@@ -50,7 +57,8 @@ services:
 
   api:
     build: ./backend
-    command: ["uvicorn", "stock_api.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    # Apply the database migrations (backend/migrations), then start the API.
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn stock_api.main:app --host 0.0.0.0 --port 8000 --reload"]
     env_file: .env
     extra_hosts:
       - "host.docker.internal:host-gateway"

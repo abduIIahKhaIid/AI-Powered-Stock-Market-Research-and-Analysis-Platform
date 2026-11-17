@@ -565,7 +565,46 @@ def report_sweep(params: dict[str, Any], result: Any) -> str:
     return "\n".join(lines)
 
 
-def build_registry(runner: ToolRunner, sandbox: SandboxRunner | None = None) -> dict[str, JobKind]:
+# --- daily refresh of the watched symbols (SCRUM-23) ------------------------------------
+
+DEFAULT_WATCHLIST = ("AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA")
+
+
+def refresh_watchlist(
+    runner: ToolRunner, watchlist: tuple[str, ...]
+) -> Callable[[dict[str, Any], JobContext], Any]:
+    """Fresh daily prices and SEC facts for each watched symbol, saved to Postgres."""
+
+    def handle(params: dict[str, Any], ctx: JobContext) -> dict[str, Any]:
+        symbols = list(params.get("symbols") or watchlist)
+        refreshed: dict[str, Any] = {}
+        errors: dict[str, str] = {}
+        for index, symbol in enumerate(symbols):
+            ctx.progress(
+                int(index / len(symbols) * 100),
+                f"Refreshing {symbol} ({index + 1} of {len(symbols)})",
+            )
+            outcome = ctx.check(runner("refresh_market_data", {"symbol": symbol}))
+            if outcome.ok:
+                data = outcome.payload["data"]
+                refreshed[symbol] = {
+                    "daily_bars": data["daily_bars"],
+                    "facts_saved": data["facts_saved"],
+                    "last_bar": data["last_bar"],
+                }
+            else:
+                errors[symbol] = outcome.error or "refresh failed"
+        ctx.progress(100, "Done")
+        return {"refreshed": refreshed, "errors": errors}
+
+    return handle
+
+
+def build_registry(
+    runner: ToolRunner,
+    sandbox: SandboxRunner | None = None,
+    watchlist: tuple[str, ...] = DEFAULT_WATCHLIST,
+) -> dict[str, JobKind]:
     kinds = [
         JobKind(
             "indicator_scan",
@@ -590,6 +629,18 @@ def build_registry(runner: ToolRunner, sandbox: SandboxRunner | None = None) -> 
                 f"{len(params['cases'])} scenarios for " + ", ".join(params["symbols"])
             ),
             report=report_sweep,
+        ),
+        JobKind(
+            "refresh_watchlist",
+            "Watched symbols refresh",
+            queue="ingest",
+            soft_limit=600,
+            hard_limit=720,
+            validate=lambda params: {
+                "symbols": [str(s).upper() for s in params.get("symbols", [])]
+            },
+            handler=refresh_watchlist(runner, watchlist),
+            summarize=lambda params, result: f"Refreshed {len(result['refreshed'])} symbols",
         ),
         JobKind(
             "refresh_directory",
