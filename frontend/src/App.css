@@ -13,7 +13,13 @@
   --user-bubble: #16181d;
   --radius: 12px;
 
-  font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    Inter,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   font-size: 15px;
   line-height: 1.55;
   color: var(--text);
@@ -1444,4 +1450,66 @@ a.source-name {
 
 .skip-link:focus {
   top: 8px;
+}
+
+/* ---------- SCRUM-37: detail chips, export, sortable comparison ---------- */
+
+.detail-chips {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.detail-chip-row,
+.export-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.detail-chips .chip:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.detail-panel {
+  margin: 0;
+  padding: 8px 10px 8px 26px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  font-size: 13px;
+}
+
+.detail-panel li + li {
+  margin-top: 3px;
+}
+
+.detail-panel a {
+  color: var(--accent);
+}
+
+.sort-button {
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+  text-align: left;
+}
+
+.sort-button:hover {
+  color: var(--accent);
+}
+
+.chart-data summary {
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.export-approval {
+  margin-top: 4px;
 }

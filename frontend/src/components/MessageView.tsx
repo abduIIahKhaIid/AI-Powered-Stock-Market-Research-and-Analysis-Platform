@@ -9,6 +9,8 @@ import ToolTimeline from "./ToolTimeline";
 // The chart libraries are large; load them only when an answer has a chart.
 const PriceChart = lazy(() => import("./PriceChart"));
 const ScenarioChart = lazy(() => import("./ScenarioChart"));
+const FundamentalsChart = lazy(() => import("./FundamentalsChart"));
+const ComparisonTable = lazy(() => import("./ComparisonTable"));
 
 function SourceList({ sources }: { sources: Source[] }) {
   return (
@@ -137,13 +139,19 @@ function Assistant({ message }: { message: AssistantMessage }) {
 
       {message.charts && message.charts.length > 0 && (
         <Suspense fallback={<p className="muted small">Loading chart…</p>}>
-          {message.charts.map((chart) =>
-            chart.kind === "scenario" ? (
-              <ScenarioChart key={`scenario-${chart.symbol}`} spec={chart} />
-            ) : (
-              <PriceChart key={`price-${chart.symbol}`} spec={chart} />
-            ),
-          )}
+          {message.charts.map((chart) => {
+            const key = `${chart.kind}-${chart.symbol}`;
+            switch (chart.kind) {
+              case "scenario":
+                return <ScenarioChart key={key} spec={chart} />;
+              case "fundamentals":
+                return <FundamentalsChart key={key} spec={chart} />;
+              case "comparison":
+                return <ComparisonTable key={key} spec={chart} />;
+              default:
+                return <PriceChart key={key} spec={chart} />;
+            }
+          })}
         </Suspense>
       )}
       {message.grounding && message.state === "done" && (

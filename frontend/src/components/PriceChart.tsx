@@ -16,6 +16,7 @@ import { bollinger, macd, rsi, sma, type Series } from "../charts/indicators";
 import { formatAsOf } from "../chat/tools";
 import { describeChart, INTERVAL_NAMES, PERIOD_NAMES } from "../charts/describe";
 import type { Candle, ChartSpec } from "../chat/types";
+import DetailChips from "./DetailChips";
 
 const PERIODS: { label: string; period: string; interval: string }[] = [
   { label: "1M", period: "1mo", interval: "1d" },
@@ -283,6 +284,7 @@ export default function PriceChart({ spec: initial, fetchPrices = defaultFetchPr
       )}
       <div className="chart-canvas" ref={container} role="img" aria-label={summary} />
       <p className="visually-hidden">{summary}</p>
+      <DetailChips sources={spec.sources} assumptions={spec.assumptions} />
       <p className="chart-foot">
         {spec.source ?? "Price data"}
         {spec.as_of ? `, as of ${formatAsOf(spec.as_of)}` : ""}

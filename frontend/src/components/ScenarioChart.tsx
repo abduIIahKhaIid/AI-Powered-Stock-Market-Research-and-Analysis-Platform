@@ -3,10 +3,11 @@
  * a text summary for screen readers.
  */
 import {
+  Area,
   CartesianGrid,
+  ComposedChart,
   Legend,
   Line,
-  LineChart,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -18,9 +19,11 @@ import {
   describeScenario,
   scenarioRows,
   signedPct,
+  withFan,
 } from "../charts/scenario";
 import { formatAsOf } from "../chat/tools";
 import type { ScenarioChartSpec } from "../chat/types";
+import DetailChips from "./DetailChips";
 
 function pct(value: number): string {
   return `${value.toFixed(1)}%`;
@@ -43,7 +46,7 @@ export default function ScenarioChart({ spec }: { spec: ScenarioChartSpec }) {
 
       <div className="scenario-plot" aria-hidden="true">
         <ResponsiveContainer width="100%" height={260}>
-          <LineChart data={rows} margin={{ top: 8, right: 16, bottom: 0, left: 8 }}>
+          <ComposedChart data={withFan(rows)} margin={{ top: 8, right: 16, bottom: 0, left: 8 }}>
             <CartesianGrid stroke="#eef0f3" vertical={false} />
             <XAxis dataKey="year" tick={{ fontSize: 12 }} />
             <YAxis
@@ -56,6 +59,18 @@ export default function ScenarioChart({ spec }: { spec: ScenarioChartSpec }) {
               labelFormatter={(label) => `Fiscal year ${label}`}
             />
             <Legend />
+            {rows.some((row) => "bear" in row && "bull" in row) && (
+              <Area
+                dataKey="range"
+                name="bear to bull"
+                stroke="none"
+                fill="#2563eb"
+                fillOpacity={0.12}
+                isAnimationActive={false}
+                legendType="none"
+                tooltipType="none"
+              />
+            )}
             {spec.series.map((series, index) => (
               <Line
                 key={series.name}
@@ -68,7 +83,7 @@ export default function ScenarioChart({ spec }: { spec: ScenarioChartSpec }) {
                 isAnimationActive={false}
               />
             ))}
-          </LineChart>
+          </ComposedChart>
         </ResponsiveContainer>
       </div>
       <p className="visually-hidden">{summary}</p>
@@ -112,6 +127,7 @@ export default function ScenarioChart({ spec }: { spec: ScenarioChartSpec }) {
         </table>
       </div>
 
+      <DetailChips sources={spec.sources} assumptions={spec.assumptions} />
       <p className="chart-foot">
         {spec.source}
         {spec.as_of ? `, price as of ${formatAsOf(spec.as_of)}` : ""}. Values in USD. A projection
