@@ -67,7 +67,10 @@ def validate_arguments(arguments: dict[str, Any], max_symbols: int = MAX_SYMBOLS
 class ToolPolicy:
     # None means every tool the MCP servers offer, minus the blocked ones.
     allowed_tools: frozenset[str] | None = None
-    blocked_tools: frozenset[str] = field(default_factory=lambda: frozenset({"ping"}))
+    # Maintenance tools the model never sees.
+    blocked_tools: frozenset[str] = field(
+        default_factory=lambda: frozenset({"ping", "refresh_market_data"})
+    )
     max_tool_calls: int = 8
     # Tools that need the user's approval in addition to APPROVAL_RULES and tool metadata.
     approval_tools: frozenset[str] = field(default_factory=frozenset)

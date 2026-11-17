@@ -13,8 +13,10 @@ from financial_mcp.alpha_vantage import (
     FallbackPrices,
     McpCaller,
 )
+from financial_mcp.cache import RedisCache, ToolCache
 from financial_mcp.market_data import PriceProvider, YFinanceProvider
 from financial_mcp.sec import SecClient
+from financial_mcp.store import MarketStore, PostgresMarketStore, RecordingPrices
 from financial_mcp.symbols import NASDAQ_LISTED_URL, NasdaqDirectory
 
 
@@ -25,6 +27,9 @@ class Services:
     sec: SecClient | None = None
     # Alpha Vantage (SCRUM-22): only when ALPHAVANTAGE_API_KEY is set.
     alpha_vantage: AlphaVantageClient | None = None
+    # SCRUM-23: Redis TTL cache for tool results and Postgres for durable market data.
+    cache: ToolCache | None = None
+    store: MarketStore | None = None
 
 
 _services: Services | None = None
@@ -51,6 +56,11 @@ def build_default_services() -> Services:
     prices: PriceProvider = YFinanceProvider()
     if alpha_vantage is not None:
         prices = FallbackPrices(prices, AlphaVantagePrices(alpha_vantage))
+    redis_url = os.getenv("REDIS_URL", "").strip()
+    database_url = os.getenv("DATABASE_URL", "").strip()
+    store = PostgresMarketStore(database_url) if database_url else None
+    if store is not None:
+        prices = RecordingPrices(prices, store)
     return Services(
         directory=NasdaqDirectory(
             cache_dir=default_cache_dir(),
@@ -59,6 +69,8 @@ def build_default_services() -> Services:
         prices=prices,
         sec=SecClient(os.getenv("SEC_USER_AGENT", ""), default_cache_dir()),
         alpha_vantage=alpha_vantage,
+        cache=RedisCache(redis_url) if redis_url else None,
+        store=store,
     )
 
 

@@ -39,6 +39,14 @@ celery_app.conf.update(
             "args": ("refresh_directory",),
             "options": {"queue": "ingest"},
         },
+        # After the US close (21:00 UTC in winter, 20:00 in summer): fresh daily prices and SEC
+        # facts for the watched symbols, saved to Postgres (SCRUM-23).
+        "refresh-watched-symbols": {
+            "task": "jobs.scheduled",
+            "schedule": crontab(hour=21, minute=37),
+            "args": ("refresh_watchlist",),
+            "options": {"queue": "ingest"},
+        },
     },
 )
 

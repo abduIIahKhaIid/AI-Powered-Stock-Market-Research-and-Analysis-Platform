@@ -50,7 +50,9 @@ def get_registry() -> dict[str, JobKind]:
             settings.sandbox_url, settings.sandbox_token, settings.sandbox_timeout_seconds
         )
     return build_registry(
-        mcp_tool_runner(settings.mcp_server_url, settings.mcp_call_timeout), sandbox
+        mcp_tool_runner(settings.mcp_server_url, settings.mcp_call_timeout),
+        sandbox,
+        tuple(symbol.upper() for symbol in settings.watched_symbols),
     )
 
 

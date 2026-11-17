@@ -69,6 +69,23 @@ Every tool returns `{data, source, as_of, units}` and rejects symbols that are n
 Prices come from Yahoo Finance via `yfinance` (development source, may be delayed); the symbol list
 comes from the Nasdaq Trader directory and is cached for a day.
 
+**Caching and durable data.**
+- **Redis cache.** The MCP server caches tool results in Redis: quotes for 60 s, intraday
+  candles for 5 minutes, daily and longer candles for 12 hours. The logs show `cache hit` or
+  `cache miss` for every call. If Redis is down, the tools still work, uncached.
+- **Postgres.**
+  - Every daily candle fetched goes into `ohlcv_daily`.
+  - Every SEC statement line item read goes into `financial_facts`, with its form, filing
+    date and link.
+  - When both Yahoo Finance and Alpha Vantage fail, `get_price_history` serves the saved daily
+    candles and says so in its source line.
+- **Daily refresh.** Celery Beat runs the `refresh_watchlist` job every day at 21:37 UTC,
+  after the US close. For each symbol in `WATCHED_SYMBOLS` it fetches a year of daily prices
+  and the annual and quarterly statements, saves them and clears that symbol's cached results.
+  It uses the maintenance tool `refresh_market_data`, which the model never sees.
+- **Migrations.** Tables are managed with Alembic (`backend/migrations`). The api container
+  runs `alembic upgrade head` on start. By hand: `docker compose exec api alembic upgrade head`.
+
 **Second source: Alpha Vantage.** With `ALPHAVANTAGE_API_KEY` set in `.env`, the MCP server
 connects to the official remote Alpha Vantage MCP server (`https://mcp.alphavantage.co/mcp`).
 - **Fallback.** When Yahoo Finance fails, `get_quote`, `get_price_history` and
