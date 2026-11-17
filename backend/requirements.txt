@@ -8,3 +8,4 @@ httpx>=0.27
 openai>=3.49,<4
 mcp>=2.3,<3
 alembic>=1.14,<2
+pyjwt>=2.10,<3

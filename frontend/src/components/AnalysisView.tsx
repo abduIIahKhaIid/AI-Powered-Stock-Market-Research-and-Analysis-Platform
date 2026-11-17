@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { fileUrl, getResult } from "../jobs/api";
+import { downloadFile, getResult } from "../jobs/api";
 import { formatBytes, formatNumber, isScanResult, scanColumns } from "../jobs/scan";
 import type { AnalysisResult, SavedAnalysis, ScanResult } from "../jobs/types";
 
@@ -113,6 +113,7 @@ function RowsTable({ rows }: { rows: Row[] }) {
 export default function AnalysisView({ analysis, onClose }: Props) {
   const [data, setData] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
   const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
@@ -171,13 +172,29 @@ export default function AnalysisView({ analysis, onClose }: Props) {
           <ul className="analysis-files">
             {analysis.files.map((file) => (
               <li key={file.name}>
-                <a href={fileUrl(analysis.id, file.name)} download={file.name}>
+                <button
+                  type="button"
+                  className="link-button"
+                  onClick={() => {
+                    setDownloadError(null);
+                    downloadFile(analysis.id, file.name).catch((problem: unknown) =>
+                      setDownloadError(
+                        problem instanceof Error ? problem.message : "The download failed.",
+                      ),
+                    );
+                  }}
+                >
                   Download {file.name}
-                </a>{" "}
+                </button>{" "}
                 <span className="muted small">({formatBytes(file.bytes)})</span>
               </li>
             ))}
           </ul>
+        )}
+        {downloadError && (
+          <p className="analysis-error" role="alert">
+            {downloadError}
+          </p>
         )}
 
         <div className="analysis-body">

@@ -64,6 +64,8 @@ class Job:
     # One line for the saved analyses list.
     summary: str | None = None
     idempotency_key: str | None = None
+    # The user who started the job (SCRUM-40); None for jobs from before sign-in existed.
+    owner: str | None = None
 
     @property
     def done(self) -> bool:
@@ -89,6 +91,7 @@ class JobStore(Protocol):
         conversation_id: str | None = None,
         max_attempts: int = 3,
         idempotency_key: str | None = None,
+        owner: str | None = None,
     ) -> Job: ...
 
     def get(self, job_id: str) -> Job: ...
@@ -98,7 +101,11 @@ class JobStore(Protocol):
     def update(self, job_id: str, **changes: Any) -> Job: ...
 
     def list(
-        self, conversation_id: str | None = None, status: str | None = None, limit: int = 50
+        self,
+        conversation_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        owner: str | None = None,
     ) -> list[Job]: ...
 
 
@@ -108,6 +115,7 @@ def _new(
     conversation_id: str | None,
     max_attempts: int,
     idempotency_key: str | None,
+    owner: str | None = None,
 ) -> Job:
     return Job(
         uuid.uuid4().hex,
@@ -116,6 +124,7 @@ def _new(
         conversation_id,
         max_attempts=max_attempts,
         idempotency_key=idempotency_key,
+        owner=owner,
     )
 
 
@@ -148,13 +157,14 @@ class MemoryJobStore:
         conversation_id: str | None = None,
         max_attempts: int = 3,
         idempotency_key: str | None = None,
+        owner: str | None = None,
     ) -> Job:
         with self._lock:
             if idempotency_key is not None:
                 existing = self.find_by_key(idempotency_key)
                 if existing is not None:
                     return existing
-            job = _new(kind, params, conversation_id, max_attempts, idempotency_key)
+            job = _new(kind, params, conversation_id, max_attempts, idempotency_key, owner)
             self._jobs[job.id] = job
         return job
 
@@ -177,13 +187,18 @@ class MemoryJobStore:
             return job
 
     def list(
-        self, conversation_id: str | None = None, status: str | None = None, limit: int = 50
+        self,
+        conversation_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        owner: str | None = None,
     ) -> list[Job]:
         jobs = [
             j
             for j in self._jobs.values()
             if (conversation_id is None or j.conversation_id == conversation_id)
             and (status is None or j.status == status)
+            and (owner is None or j.owner == owner)
         ]
         return sorted(jobs, key=lambda j: j.created_at, reverse=True)[:limit]
 
@@ -217,12 +232,15 @@ ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS summary TEXT;
 ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS idempotency_key TEXT;
 CREATE UNIQUE INDEX IF NOT EXISTS analysis_jobs_idempotency_key
     ON analysis_jobs (idempotency_key) WHERE idempotency_key IS NOT NULL;
+-- SCRUM-40: the user who started the job.
+ALTER TABLE analysis_jobs ADD COLUMN IF NOT EXISTS owner TEXT;
+CREATE INDEX IF NOT EXISTS analysis_jobs_owner ON analysis_jobs (owner, created_at);
 """
 
 COLUMNS = (
     "id, kind, params, conversation_id, status, progress, stage, attempts, max_attempts, error, "
     "result, result_path, cancel_requested, created_at, started_at, finished_at, retry_at, files, "
-    "summary, idempotency_key"
+    "summary, idempotency_key, owner"
 )
 COLUMN_NAMES = COLUMNS.split(", ")
 JSON_FIELDS = {"params", "result", "files"}
@@ -257,8 +275,9 @@ class PostgresJobStore:
         conversation_id: str | None = None,
         max_attempts: int = 3,
         idempotency_key: str | None = None,
+        owner: str | None = None,
     ) -> Job:
-        job = _new(kind, params, conversation_id, max_attempts, idempotency_key)
+        job = _new(kind, params, conversation_id, max_attempts, idempotency_key, owner)
         values = [
             json.dumps(getattr(job, c), default=str) if c in JSON_FIELDS else getattr(job, c)
             for c in COLUMN_NAMES
@@ -321,9 +340,16 @@ class PostgresJobStore:
         return job
 
     def list(
-        self, conversation_id: str | None = None, status: str | None = None, limit: int = 50
+        self,
+        conversation_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        owner: str | None = None,
     ) -> list[Job]:
         where, params = [], []
+        if owner is not None:
+            where.append("owner = %s")
+            params.append(owner)
         if conversation_id is not None:
             where.append("conversation_id = %s")
             params.append(conversation_id)

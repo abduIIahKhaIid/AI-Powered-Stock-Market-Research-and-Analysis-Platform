@@ -1,5 +1,8 @@
 # Local development stack. Start everything with:  docker compose up --build
-# Ports are bound to 127.0.0.1 so they are reachable only from this computer.
+# Then open http://localhost:8080. Only Nginx publishes a port (bound to 127.0.0.1, so it is
+# reachable only from this computer); every other service is internal (SCRUM-40).
+# To reach Postgres, Redis, the API or the MCP server directly while debugging:
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up
 
 services:
   postgres:
@@ -10,8 +13,6 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-stock}
     volumes:
       - pgdata:/var/lib/postgresql/data
-    ports:
-      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 5s
@@ -23,8 +24,6 @@ services:
     command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redisdata:/data
-    ports:
-      - "127.0.0.1:6379:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -40,8 +39,6 @@ services:
       MCP_CACHE_DIR: /home/appuser/.cache/financial_mcp
     volumes:
       - mcpcache:/home/appuser/.cache/financial_mcp
-    ports:
-      - "127.0.0.1:8100:8100"
     # Redis caches tool results; Postgres keeps ohlcv_daily and financial_facts (SCRUM-23).
     # Both are optional at runtime: the tools still answer if either is down.
     depends_on:
@@ -58,7 +55,9 @@ services:
   api:
     build: ./backend
     # Apply the database migrations (backend/migrations), then start the API.
-    command: ["sh", "-c", "alembic upgrade head && exec uvicorn stock_api.main:app --host 0.0.0.0 --port 8000 --reload"]
+    # Behind Nginx: --proxy-headers takes the client address from X-Forwarded-For, which Nginx
+    # sets (only Nginx can reach this port).
+    command: ["sh", "-c", "alembic upgrade head && exec uvicorn stock_api.main:app --host 0.0.0.0 --port 8000 --reload --proxy-headers --forwarded-allow-ips='*'"]
     env_file: .env
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -69,8 +68,6 @@ services:
     volumes:
       - ./backend:/app
       - jobresults:/data/job-results
-    ports:
-      - "127.0.0.1:8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -171,10 +168,25 @@ services:
       VITE_USE_POLLING: "true"
     volumes:
       - ./frontend/src:/app/src
-    ports:
-      - "127.0.0.1:5173:5173"
     depends_on:
       - api
+
+  # The only service with a published port: the web app at / and the API at /api (SCRUM-40).
+  # Runs as an unprivileged user. HTTP_PORT in .env changes the port (default 8080).
+  nginx:
+    image: nginxinc/nginx-unprivileged:1.27-alpine
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    ports:
+      - "127.0.0.1:${HTTP_PORT:-8080}:8080"
+    depends_on:
+      - api
+      - frontend
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:8080/api/health/live"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
 
 networks:
   # Internal only: no route to the internet or the host.

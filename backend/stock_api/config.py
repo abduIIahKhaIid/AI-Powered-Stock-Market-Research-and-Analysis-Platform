@@ -17,7 +17,25 @@ class Settings(BaseSettings):
     mcp_server_url: str = "http://mcp:8100/mcp"
     mcp_health_url: str = "http://mcp:8100/health"
 
-    cors_origins: list[str] = ["http://localhost:5173"]
+    cors_origins: list[str] = ["http://localhost:8080", "http://localhost:5173"]
+    # Interactive API docs at /docs; turn off in production.
+    api_docs_enabled: bool = True
+
+    # Sign-in (SCRUM-40). Every endpoint except /health and /auth needs a bearer token.
+    auth_enabled: bool = True
+    # HS256 signing key, at least 32 characters. Empty in development means a random key
+    # per process (sign-ins end on restart); production refuses to start without one.
+    jwt_secret: str = ""
+    jwt_ttl_minutes: int = 12 * 60
+    auth_allow_signup: bool = True
+    # When set, creating an account needs this invite code.
+    auth_signup_code: str = ""
+    # Requests per minute, per signed-in user (sign-in attempts: per client address).
+    rate_limit_enabled: bool = True
+    rate_limit_chat_per_minute: int = 20
+    rate_limit_jobs_per_minute: int = 20
+    rate_limit_api_per_minute: int = 300
+    rate_limit_auth_per_minute: int = 10
 
     # Seconds to wait for each dependency in /health before reporting it as down.
     health_check_timeout: float = 2.0

@@ -31,16 +31,21 @@ cp .env.example .env          # Windows PowerShell: Copy-Item .env.example .env
 docker compose up --build
 ```
 
-| Service | URL | What it is |
-|---|---|---|
-| Frontend | http://localhost:5173 | Chat web app |
-| API | http://localhost:8000/health | Health of the API and its dependencies |
-| API docs | http://localhost:8000/docs | Interactive OpenAPI docs |
-| MCP server | http://localhost:8100/health | Financial Analysis MCP server (`/mcp` endpoint) |
-| Postgres | localhost:5432 | Database |
-| Redis | localhost:6379 | Celery broker, cache, progress pub/sub |
+| URL | What it is |
+|---|---|
+| http://localhost:8080 | Chat web app (sign in or create an account first) |
+| http://localhost:8080/api/health | Health of the API and its dependencies |
+| http://localhost:8080/api/docs | Interactive OpenAPI docs |
 
-All ports are bound to `127.0.0.1`, so they are reachable only from your computer.
+Nginx is the only service with a published port, bound to `127.0.0.1` so it is reachable only
+from your computer. It serves the web app at `/` and the API at `/api`. Postgres, Redis, the MCP
+server, the API and the Sandbox Runner are internal. To reach them directly while debugging, add
+`-f docker-compose.debug.yml` (it publishes Postgres 5432, Redis 6379, MCP 8100, API 8000 and Vite
+5173 on 127.0.0.1):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.debug.yml up
+```
 
 `GET /health` always answers 200 while the API runs, with `"status": "ok"` when every dependency is
 up and `"degraded"` (plus the failing service) when one is down.
@@ -260,7 +265,8 @@ docker compose exec api python -m stock_api.agent.ask --detailed "How did AAPL m
 
 ## Using the web app
 
-Open http://localhost:5173 and ask a question, or pick one of the starter prompts.
+Open http://localhost:8080, create an account (or sign in), and ask a question or pick one of
+the starter prompts. Your name and **Sign out** are in the header; conversations are kept per user.
 
 - **Streaming answers.** The answer appears as the model writes it (`POST /api/chat`, read as a
   Server-Sent Events stream). **Stop** cancels a running answer.
@@ -305,8 +311,8 @@ Open http://localhost:5173 and ask a question, or pick one of the starter prompt
   Opening one shows its result table, the CSV download and the data source. These are kept on
   the server, so they are still there after a restart or on another browser.
 
-The dev server forwards `/api/*` to the API (`VITE_API_PROXY_TARGET`, default
-`http://localhost:8000`).
+In Docker, Nginx forwards `/api/*` to the API. Without Docker, the Vite dev server does the same
+(`VITE_API_PROXY_TARGET`, default `http://localhost:8000`).
 
 ## Running the Python services without Docker (Windows)
 
@@ -376,9 +382,33 @@ All of them must pass before a pull request can be merged into `main`.
 MCP tools or the eval change, and on demand. The offline model must score 100%; the real model runs
 when the `EVAL_LLM_API_KEY` secret is set.
 
+## Security
+
+The stack is hardened as follows (SCRUM-40); details and the AWS plan are in
+[`docs/security.md`](docs/security.md).
+
+- **One way in.** Only Nginx publishes a port. It adds security headers and limits sign-in
+  attempts per address.
+- **Sign-in.** Every API endpoint except `/health` and `/auth/*` needs a JWT. Accounts use scrypt
+  password hashes. Each user sees only their own jobs, saved analyses, approvals and
+  conversations. Set `JWT_SECRET` in `.env`; `AUTH_SIGNUP_CODE` makes sign-up invite-only.
+- **Rate limits per user.** 20 chat messages a minute and 20 job requests a minute by default,
+  answered with HTTP 429 and `Retry-After`.
+- **Secrets.** Secrets live only in `.env` locally (git-ignored) and in SSM Parameter Store on
+  AWS. CI runs `scripts/check_secrets.py` on every change.
+- **Dependency scan.** CI runs `pip-audit` on all Python requirements and `npm audit` on the web
+  app.
+- **Prompt injection.**
+  - Text from tools reaches the model only as quoted data, with chat-template tokens defused.
+  - The system prompt tells the model never to follow instructions found in tool data.
+  - Anything the model asks for afterwards still goes through the policy and approval cards.
+  - Tests cover this (`backend/tests/test_prompt_injection.py`), and two eval cases check a real
+    model.
+
 ## Project documents
 
 - System design: [`docs/system-design.md`](docs/system-design.md)
+- Security: [`docs/security.md`](docs/security.md)
 - AWS architecture diagram: [`docs/architecture/aws-architecture.svg`](docs/architecture/aws-architecture.svg)
 - Jira backlog and sprint plan: [`docs/jira-backlog.md`](docs/jira-backlog.md)
 

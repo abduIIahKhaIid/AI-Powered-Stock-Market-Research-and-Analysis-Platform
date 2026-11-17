@@ -3,6 +3,8 @@
  * and parsed here following the Server-Sent Events format.
  */
 
+import { apiFetch } from "../auth/session";
+
 import type { ChatEvent, Mode } from "./types";
 
 export interface RawSseEvent {
@@ -109,7 +111,7 @@ export async function streamChat(
   onEvent: (event: ChatEvent) => void,
   signal?: AbortSignal,
 ): Promise<void> {
-  const response = await fetch(CHAT_ENDPOINT, {
+  const response = await apiFetch(CHAT_ENDPOINT, {
     method: "POST",
     headers: { "Content-Type": "application/json", Accept: "text/event-stream" },
     body: JSON.stringify(request),

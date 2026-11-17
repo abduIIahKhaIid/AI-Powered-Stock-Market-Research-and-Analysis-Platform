@@ -141,7 +141,8 @@ class Agent:
         approvals: ApprovalBroker | None = None,
         audit: AuditLog | None = None,
         today: Callable[[], date] = date.today,
-        toolbox_wrapper: Callable[[Toolbox, str], Toolbox] | None = None,
+        # Called as wrapper(toolbox, conversation_id, owner=...) when a user is signed in.
+        toolbox_wrapper: Callable[..., Toolbox] | None = None,
     ) -> None:
         self.gateway = gateway
         self.toolbox_factory = toolbox_factory
@@ -186,12 +187,21 @@ class Agent:
             await self.audit.approval(request)
 
     async def run(
-        self, message: str, *, mode: Mode = "simple", conversation_id: str | None = None
+        self,
+        message: str,
+        *,
+        mode: Mode = "simple",
+        conversation_id: str | None = None,
+        owner: str | None = None,
     ) -> AsyncIterator[AgentEvent]:
+        """Answer one message. `owner` is the signed-in user's id (SCRUM-40): their
+        conversations, jobs and approvals are kept apart from other users'."""
         conversation_id = conversation_id or uuid.uuid4().hex
         yield AgentEvent("conversation", {"conversation_id": conversation_id, "mode": mode})
 
-        conversation = await self.store.load(conversation_id)
+        # Another user sending the same conversation id gets a separate, empty conversation.
+        store_key = f"{owner}:{conversation_id}" if owner else conversation_id
+        conversation = await self.store.load(store_key)
         messages = build_messages(conversation, message, mode, self.today())
         totals = _Totals()
         sources: dict[tuple[str, str | None], dict[str, Any]] = {}
@@ -213,7 +223,8 @@ class Agent:
             async with self.toolbox_factory() as mcp_toolbox:
                 toolbox: Toolbox = mcp_toolbox
                 if self.toolbox_wrapper is not None:
-                    toolbox = self.toolbox_wrapper(mcp_toolbox, conversation_id)
+                    extra = {"owner": owner} if owner else {}
+                    toolbox = self.toolbox_wrapper(mcp_toolbox, conversation_id, **extra)
                 # LLM errors are caught inside the MCP session: raised through it, they
                 # would arrive wrapped in an ExceptionGroup by the session's task group.
                 try:
@@ -281,6 +292,7 @@ class Agent:
                                     needed["reason"],
                                     _estimate(toolbox, call.name, call.arguments)
                                     or needed.get("estimate"),
+                                    owner=owner,
                                 )
                                 approval_id = request.id
                                 await self._audit_approval(request)
@@ -466,7 +478,7 @@ class Agent:
             gateway=self.gateway,
             keep_messages=self.history_messages,
         )
-        await self.store.save(conversation_id, conversation)
+        await self.store.save(store_key, conversation)
 
         yield AgentEvent("sources", {"sources": list(sources.values())})
         yield AgentEvent(

@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Resp
 from fastapi.responses import FileResponse
 from pydantic import BaseModel, Field
 
+from .auth import CurrentUser, Identity, owner_of, rate_limited
 from .jobs import Job, JobKind, JobStore, ResultStore, get_job_store, get_registry, get_result_store
 from .jobs.queue import Queue, get_queue
 from .jobs.registry import JobInputError
@@ -36,11 +37,15 @@ Queued = Annotated[Queue, Depends(get_queue)]
 Results = Annotated[ResultStore, Depends(get_result_store)]
 
 
-def _get(store: JobStore, job_id: str) -> Job:
+def _get(store: JobStore, job_id: str, user: Identity) -> Job:
+    """The job, if this user may see it. Another user's job is reported as not found."""
     try:
-        return store.get(job_id)
+        job = store.get(job_id)
     except JobNotFound:
         raise HTTPException(status_code=404, detail="No such job.") from None
+    if job.owner != owner_of(user):
+        raise HTTPException(status_code=404, detail="No such job.")
+    return job
 
 
 @router.post("/jobs", status_code=202)
@@ -50,6 +55,7 @@ def create_job(
     registry: Registry,
     queue: Queued,
     response: Response,
+    user: Annotated[Identity, Depends(rate_limited("jobs"))],
     idempotency_key: IdempotencyKey = None,
 ) -> dict[str, Any]:
     """Queue a job. Sending the same Idempotency-Key again returns the first job (200)."""
@@ -64,6 +70,10 @@ def create_job(
         raise HTTPException(status_code=422, detail=str(exc)) from None
     if idempotency_key is not None:
         existing = store.find_by_key(idempotency_key)
+        if existing is not None and existing.owner != owner_of(user):
+            raise HTTPException(
+                status_code=409, detail="This Idempotency-Key was already used for another job."
+            )
         if existing is not None:
             if (existing.kind, existing.params) != (kind.name, params):
                 raise HTTPException(
@@ -78,19 +88,25 @@ def create_job(
         body.conversation_id,
         max_attempts=kind.max_attempts,
         idempotency_key=idempotency_key,
+        owner=owner_of(user),
     )
     queue.enqueue(job, kind)
     return job.to_dict()
 
 
 @router.get("/jobs/{job_id}")
-def get_job(job_id: JobId, store: Store) -> dict[str, Any]:
-    return _get(store, job_id).to_dict()
+def get_job(job_id: JobId, store: Store, user: CurrentUser) -> dict[str, Any]:
+    return _get(store, job_id, user).to_dict()
 
 
 @router.post("/jobs/{job_id}/cancel")
-def cancel_job(job_id: JobId, store: Store, queue: Queued) -> dict[str, Any]:
-    job = _get(store, job_id)
+def cancel_job(
+    job_id: JobId,
+    store: Store,
+    queue: Queued,
+    user: Annotated[Identity, Depends(rate_limited("jobs"))],
+) -> dict[str, Any]:
+    job = _get(store, job_id, user)
     if job.done:
         raise HTTPException(status_code=409, detail=f"The job is already {job.status}.")
     if job.status == "queued":
@@ -105,19 +121,22 @@ def cancel_job(job_id: JobId, store: Store, queue: Queued) -> dict[str, Any]:
 @router.get("/jobs")
 def list_jobs(
     store: Store,
+    user: CurrentUser,
     conversation_id: Annotated[str | None, Query(pattern=r"^[0-9a-f]{32}$")] = None,
     status: Annotated[
         str | None, Query(pattern=r"^(queued|running|succeeded|failed|cancelled)$")
     ] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[dict[str, Any]]:
-    return [job.to_dict() for job in store.list(conversation_id, status, limit)]
+    return [
+        job.to_dict() for job in store.list(conversation_id, status, limit, owner=owner_of(user))
+    ]
 
 
 @router.get("/jobs/{job_id}/result")
-def get_result(job_id: JobId, store: Store, results: Results) -> dict[str, Any]:
+def get_result(job_id: JobId, store: Store, results: Results, user: CurrentUser) -> dict[str, Any]:
     """The full result of a finished job, also when it was too large for the job row."""
-    job = _get(store, job_id)
+    job = _get(store, job_id, user)
     if job.status != "succeeded":
         raise HTTPException(status_code=409, detail=f"The job is {job.status}; no result yet.")
     try:
@@ -128,8 +147,10 @@ def get_result(job_id: JobId, store: Store, results: Results) -> dict[str, Any]:
 
 
 @router.get("/jobs/{job_id}/files/{name}")
-def download_file(job_id: JobId, name: FileName, store: Store, results: Results) -> FileResponse:
-    job = _get(store, job_id)
+def download_file(
+    job_id: JobId, name: FileName, store: Store, results: Results, user: CurrentUser
+) -> FileResponse:
+    job = _get(store, job_id, user)
     saved = next((f for f in job.files if f["name"] == name), None)
     if saved is None:
         raise HTTPException(status_code=404, detail="This job has no such file.")
@@ -146,6 +167,7 @@ def download_file(job_id: JobId, name: FileName, store: Store, results: Results)
 def saved_analyses(
     store: Store,
     registry: Registry,
+    user: CurrentUser,
     conversation_id: Annotated[str | None, Query(pattern=r"^[0-9a-f]{32}$")] = None,
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
 ) -> list[dict[str, Any]]:
@@ -161,5 +183,5 @@ def saved_analyses(
             "finished_at": job.finished_at.isoformat() if job.finished_at else None,
             "files": job.files,
         }
-        for job in store.list(conversation_id, "succeeded", limit)
+        for job in store.list(conversation_id, "succeeded", limit, owner=owner_of(user))
     ]

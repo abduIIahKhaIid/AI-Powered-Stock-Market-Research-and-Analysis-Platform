@@ -103,6 +103,41 @@ jobs:
       - name: No sandbox containers are left behind
         run: test -z "$(docker ps -aq --filter label=stock-platform.sandbox=1)"
 
+  security:
+    name: Security (secrets, dependency audit)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: No secrets in tracked files
+        run: python scripts/check_secrets.py
+
+      - name: Python dependencies have no known vulnerabilities (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit --progress-spinner off \
+            -r backend/requirements.txt -r mcp_server/requirements.txt \
+            -r sandbox/runner/requirements.txt -r sandbox/image/requirements.txt
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Web app dependencies have no high or critical vulnerabilities (npm audit)
+        working-directory: frontend
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: Development tools (reported, not blocking)
+        working-directory: frontend
+        run: npm audit --audit-level=high || echo "::warning::npm audit found advisories in development-only packages; see the log."
+
   frontend:
     name: Frontend (eslint, vitest, build)
     runs-on: ubuntu-latest
@@ -144,13 +179,36 @@ jobs:
       - name: Build images
         run: docker compose build
 
-      - name: Start core services and wait until healthy
-        run: docker compose up -d --wait --wait-timeout 180 postgres redis mcp api
-
-      - name: Check /health reports every service as ok
+      - name: Only Nginx publishes a port
         run: |
-          curl -fsS http://127.0.0.1:8000/health | tee health.json
+          docker compose config --format json > compose.json
+          python3 - <<'PY'
+          import json
+          services = json.load(open("compose.json"))["services"]
+          published = sorted(name for name, service in services.items() if service.get("ports"))
+          print("services with published ports:", published)
+          assert published == ["nginx"], published
+          PY
+
+      - name: Start the stack and wait until healthy
+        run: docker compose up -d --wait --wait-timeout 240 postgres redis mcp api frontend nginx
+
+      - name: Check /health through Nginx reports every service as ok
+        run: |
+          curl -fsS http://127.0.0.1:8080/api/health | tee health.json
           python3 -c "import json,sys; h=json.load(open('health.json')); sys.exit(0 if h['status']=='ok' else 1)"
+
+      - name: Sign-in works end to end and the API refuses requests without it
+        run: |
+          set -e
+          base=http://127.0.0.1:8080/api
+          test "$(curl -s -o /dev/null -w '%{http_code}' $base/analyses)" = 401
+          token=$(curl -fsS -X POST $base/auth/register -H 'Content-Type: application/json' \
+            -d '{"username":"ci-user","password":"ci-password-123"}' \
+            | python3 -c 'import json,sys; print(json.load(sys.stdin)["access_token"])')
+          curl -fsS $base/auth/me -H "Authorization: Bearer $token"
+          curl -fsS $base/analyses -H "Authorization: Bearer $token"
+          curl -fsS -o /dev/null http://127.0.0.1:8080/
 
       - name: Sandbox runner runs code in a fresh container
         run: |
