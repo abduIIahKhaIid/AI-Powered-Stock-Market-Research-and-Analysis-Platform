@@ -58,6 +58,7 @@ The Financial Analysis MCP server (`http://localhost:8100/mcp`) currently offers
 | `get_valuation_metrics(symbol)` | Price, market cap, P/E, P/S, EV/EBITDA, margins, revenue and EPS growth, each with formula and sourced inputs |
 | `get_earnings(symbol)` | Diluted/basic EPS and net income for 5 years and 8 quarters, next earnings date |
 | `compare_stocks(symbols, metrics)` | 2 to 5 symbols side by side, one row per metric, a source per cell |
+| `get_company_overview(symbol)` | Sector, industry, description, market cap, P/E, dividend yield, beta, 52-week range (Alpha Vantage) |
 | `run_scenario(symbol, assumptions, cases)` | Base, bull and bear projections (revenue, net income, EPS, DCF-style value per share) with every assumption listed |
 | `ping()` | Connectivity check |
 
@@ -68,11 +69,32 @@ Every tool returns `{data, source, as_of, units}` and rejects symbols that are n
 Prices come from Yahoo Finance via `yfinance` (development source, may be delayed); the symbol list
 comes from the Nasdaq Trader directory and is cached for a day.
 
+**Second source: Alpha Vantage.** With `ALPHAVANTAGE_API_KEY` set in `.env`, the MCP server
+connects to the official remote Alpha Vantage MCP server (`https://mcp.alphavantage.co/mcp`).
+- **Fallback.** When Yahoo Finance fails, `get_quote`, `get_price_history` and
+  `compute_indicators` use Alpha Vantage's daily, weekly or monthly bars automatically.
+  Indicators are computed from those bars the same way. The source line says which provider
+  was used ("Alpha Vantage (official MCP server), used because … failed").
+- **Company profile.** `get_company_overview` returns sector, industry, description, market
+  cap, P/E, dividend yield, beta, 52-week range and analyst target from Alpha Vantage.
+- **Free-tier limits.** The free tier allows about 25 requests a day, so:
+  - responses are cached on disk (quotes 60 s, daily bars 12 h, weekly and monthly bars and
+    overviews 24 h)
+  - calls are at least 1.2 s apart
+  - the server stops at `ALPHAVANTAGE_DAILY_LIMIT` and then serves stale cached copies when
+    it has them
+  - the free daily series covers the last 100 trading days only
+- **Logs.** Cache hits and misses are logged.
+
+The client calls a function directly when the server lists it, or through its `TOOL_CALL`
+entry point otherwise.
+
 Check the tools against live data:
 
 ```bash
 docker compose exec mcp python -m financial_mcp.live_check AAPL
 docker compose exec mcp python -m financial_mcp.live_check nvidia
+docker compose exec mcp python -m financial_mcp.live_check AAPL --alpha-vantage   # 2 Alpha Vantage requests
 ```
 
 ## LLM setup

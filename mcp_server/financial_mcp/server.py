@@ -18,6 +18,8 @@ from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 
+from financial_mcp.alpha_vantage import SOURCE_LABEL as AV_SOURCE
+from financial_mcp.alpha_vantage import AlphaVantageError, company_overview
 from financial_mcp.envelope import envelope
 from financial_mcp.indicators import (
     EXPLANATIONS,
@@ -56,7 +58,7 @@ from financial_mcp.valuation import (
 )
 
 SERVER_NAME = "financial-analysis"
-SERVER_VERSION = "0.4.0"
+SERVER_VERSION = "0.5.0"
 
 mcp = MCPServer(
     name=SERVER_NAME,
@@ -396,6 +398,38 @@ def run_scenario(
     cases: list[dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     return scenario_result(symbol, assumptions, cases)
+
+
+@mcp.tool(
+    description=(
+        "Company overview for a NASDAQ symbol from Alpha Vantage: sector, industry, a short "
+        "business description, market cap, P/E, PEG, EPS, dividend yield, beta, 52-week high "
+        "and low, analyst target price and trailing revenue. Use it for 'what does this "
+        "company do' and profile questions."
+    )
+)
+def get_company_overview(symbol: str) -> dict[str, Any]:
+    listing = _require_listing(symbol)
+    client = get_services().alpha_vantage
+    if client is None:
+        raise ToolError(
+            "Company overviews need Alpha Vantage, which is not configured "
+            "(set ALPHAVANTAGE_API_KEY)."
+        )
+    try:
+        overview = company_overview(client, listing["symbol"])
+    except AlphaVantageError as exc:
+        raise ToolError(f"{listing['symbol']}: {exc}") from exc
+    return envelope(
+        overview,
+        source=AV_SOURCE,
+        as_of=overview.get("latest_quarter"),
+        units={
+            "market_cap_revenue": "USD",
+            "prices_and_eps": "USD",
+            "percent_fields": "percent",
+        },
+    )
 
 
 @mcp.custom_route("/health", methods=["GET"])
