@@ -147,6 +147,22 @@ services:
       timeout: 5s
       retries: 5
 
+  # Golden-answer eval (SCRUM-39). Runs only on demand, on the frozen market snapshot:
+  #   docker compose run --rm evals                       (offline model, no key needed)
+  #   docker compose run --rm evals --model configured    (the LLM set in .env)
+  evals:
+    build: ./backend
+    profiles: ["tools"]
+    entrypoint: ["python", "-m", "evals"]
+    env_file: .env
+    working_dir: /repo
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./backend:/repo/backend:ro
+      - ./mcp_server:/repo/mcp_server:ro
+      - ./evals:/repo/evals
+
   frontend:
     build: ./frontend
     environment:
