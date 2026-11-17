@@ -64,6 +64,8 @@ services:
       - "host.docker.internal:host-gateway"
     environment:
       JOB_RESULTS_DIR: /data/job-results
+      # uvicorn --reload polls, because Windows bind mounts send no file events.
+      WATCHFILES_FORCE_POLLING: "true"
     volumes:
       - ./backend:/app
       - jobresults:/data/job-results
@@ -149,6 +151,8 @@ services:
     build: ./frontend
     environment:
       VITE_API_PROXY_TARGET: http://api:8000
+      # Windows bind mounts send no file events: poll so edits and git pulls show up.
+      VITE_USE_POLLING: "true"
     volumes:
       - ./frontend/src:/app/src
     ports:

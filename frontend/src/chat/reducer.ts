@@ -37,6 +37,8 @@ function updateTool(
   return tools.map((tool, i) => (i === index ? { ...tool, ...change } : tool));
 }
 
+const CHART_KINDS = new Set(["price", "scenario", "fundamentals", "comparison"]);
+
 export function applyEvent(message: AssistantMessage, event: ChatEvent): AssistantMessage {
   switch (event.type) {
     case "status":
@@ -128,6 +130,8 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
 
     case "chart": {
       const chart = event.data;
+      // A newer API may send chart kinds this page does not know yet: skip them.
+      if (!chart || !CHART_KINDS.has(chart.kind)) return message;
       // One chart of each kind per symbol: a newer one replaces the older.
       const others = (message.charts ?? []).filter(
         (c) => c.kind !== chart.kind || c.symbol !== chart.symbol,

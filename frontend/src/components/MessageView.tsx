@@ -2,6 +2,7 @@ import { lazy, Suspense } from "react";
 import { formatAsOf, toolLabel } from "../chat/tools";
 import type { AssistantMessage, ChatMessage, Grounding, Source } from "../chat/types";
 import ApprovalCard from "./ApprovalCard";
+import ChartBoundary from "./ChartBoundary";
 import JobCard from "./JobCard";
 import Markdown from "./Markdown";
 import ToolTimeline from "./ToolTimeline";
@@ -143,13 +144,31 @@ function Assistant({ message }: { message: AssistantMessage }) {
             const key = `${chart.kind}-${chart.symbol}`;
             switch (chart.kind) {
               case "scenario":
-                return <ScenarioChart key={key} spec={chart} />;
+                return (
+                  <ChartBoundary key={key} name="scenario chart">
+                    <ScenarioChart spec={chart} />
+                  </ChartBoundary>
+                );
               case "fundamentals":
-                return <FundamentalsChart key={key} spec={chart} />;
+                return (
+                  <ChartBoundary key={key} name="fundamentals chart">
+                    <FundamentalsChart spec={chart} />
+                  </ChartBoundary>
+                );
               case "comparison":
-                return <ComparisonTable key={key} spec={chart} />;
+                return (
+                  <ChartBoundary key={key} name="comparison table">
+                    <ComparisonTable spec={chart} />
+                  </ChartBoundary>
+                );
+              case "price":
+                return (
+                  <ChartBoundary key={key} name="price chart">
+                    <PriceChart spec={chart} />
+                  </ChartBoundary>
+                );
               default:
-                return <PriceChart key={key} spec={chart} />;
+                return null;
             }
           })}
         </Suspense>
