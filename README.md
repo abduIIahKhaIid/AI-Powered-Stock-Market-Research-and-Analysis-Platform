@@ -16,6 +16,7 @@ backend/        FastAPI API (stock_api), Celery worker and Beat
 mcp_server/     Custom Financial Analysis MCP server (financial_mcp)
 frontend/       React + Vite + TypeScript web app
 sandbox/        Isolated Python sandbox (Sprint 3)
+evals/          Golden-answer eval: accuracy and grounding checks (SCRUM-39)
 docs/           System design, AWS architecture diagram, Jira backlog
 scripts/        Virtual-environment setup scripts
 docker-compose.yml
@@ -346,11 +347,18 @@ On Linux or WSL use `scripts/setup_venv.sh` instead.
 From the repository root, with the virtual environment active:
 
 ```bash
-pytest                                  # backend and MCP server tests
-ruff check . && ruff format --check backend mcp_server
-mypy backend mcp_server
+pytest                                  # backend, MCP server, sandbox and eval tests
+ruff check . && ruff format --check backend mcp_server sandbox evals
+mypy backend mcp_server sandbox evals
 cd frontend && npm run lint && npm test && npm run build
 ```
+
+### Accuracy eval
+
+`python -m evals` asks 32 golden questions (technical, fundamental, comparison, what-if and
+prompt-injection cases) on a frozen market snapshot and scores numeric accuracy, grounding, the
+disclaimer and sources. Add `--model configured` to evaluate the LLM in `.env`. Each run is saved
+and compared with the previous one. See [`evals/README.md`](evals/README.md).
 
 ### Continuous integration
 
@@ -362,7 +370,11 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every pull request and on pu
 | Frontend (eslint, vitest, build) | lint, component tests, type check and production build |
 | Docker stack smoke test | builds every image, starts postgres, redis, mcp and api, and requires `/health` to report `ok` |
 
-All three must pass before a pull request can be merged into `main`.
+All of them must pass before a pull request can be merged into `main`.
+
+`.github/workflows/eval.yml` runs the accuracy eval when the agent, the prompt, the LLM settings, the
+MCP tools or the eval change, and on demand. The offline model must score 100%; the real model runs
+when the `EVAL_LLM_API_KEY` secret is set.
 
 ## Project documents
 

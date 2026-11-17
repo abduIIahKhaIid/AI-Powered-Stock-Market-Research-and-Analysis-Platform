@@ -64,10 +64,10 @@ jobs:
         run: ruff check .
 
       - name: Format check (ruff)
-        run: ruff format --check backend mcp_server sandbox
+        run: ruff format --check backend mcp_server sandbox evals
 
       - name: Type check (mypy)
-        run: mypy backend mcp_server sandbox
+        run: mypy backend mcp_server sandbox evals
 
       - name: Tests (pytest)
         run: pytest
