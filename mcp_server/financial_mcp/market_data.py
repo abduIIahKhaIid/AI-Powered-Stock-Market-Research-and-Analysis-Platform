@@ -37,7 +37,8 @@ class Candle:
 
 
 class PriceProvider(Protocol):
-    source: str
+    @property
+    def source(self) -> str: ...
 
     def history(self, symbol: str, period: str, interval: str) -> list[Candle]: ...
 
