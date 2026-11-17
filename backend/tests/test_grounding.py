@@ -122,6 +122,9 @@ def test_extract_assumptions_variants() -> None:
         "Growth 3%",
     ]
     assert extract_assumptions("Assumptions: price stays flat") == ["price stays flat"]
+    assert extract_assumptions("**Assumptions**\n- Revenue grows **3 %** a year (`base`)") == [
+        "Revenue grows 3 % a year (base)"
+    ]
     assert extract_assumptions("No list here") == []
 
 
@@ -130,6 +133,10 @@ def test_disclaimer_adds_projection_note_only_when_needed() -> None:
     assert "Projections" in disclaimer_for("q", "a", ["Growth 5%"])
     assert "Projections" in disclaimer_for("Agar price 10% gire to?", "", [])
     assert "Projections" not in disclaimer_for("NVDA price?", "NVDA is $168.89.", [])
+    # "Agar" in an answer is usually "if you need ...", not a what-if.
+    assert "Projections" not in disclaimer_for(
+        "Apple ka sector kya hai?", "Agar aapko sector chahiye to doosra source dekhein.", []
+    )
 
 
 def test_source_link_from_payload() -> None:
