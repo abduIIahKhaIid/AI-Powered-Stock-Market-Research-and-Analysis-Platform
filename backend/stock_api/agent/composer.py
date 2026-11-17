@@ -15,10 +15,14 @@ PROJECTION_NOTE = (
 
 _PROJECTION_WORDS = re.compile(
     r"\b(?:project(?:ion|ed|s)?|forecast\w*|predict\w*|what[- ]if|scenario\w*|target price|"
-    r"intrinsic value|DCF|fair value|expected return|in \d+ years?|by 20\d\d|agar|"
+    r"intrinsic value|DCF|fair value|expected return|in \d+ years?|by 20\d\d|"
     r"andaza|andaaza)\b",
     re.IGNORECASE,
 )
+# "Agar" (Roman Urdu "if") marks a what-if only in the question; in an answer it is often just
+# "agar aapko ... chahiye" ("if you need ...").
+_WHAT_IF_QUESTION = re.compile(r"\bagar\b", re.IGNORECASE)
+_EMPHASIS = re.compile(r"\*\*|__|`")
 _ASSUMPTION_HEADING = re.compile(
     r"^\s*(?:#{1,6}\s*|\*\*|__)?\s*(?:Assumptions?|Mafroozat|Mafrozat)\b[^\n]*$",
     re.IGNORECASE,
@@ -35,13 +39,13 @@ def extract_assumptions(answer: str) -> list[str]:
     for index, line in enumerate(lines):
         if not _ASSUMPTION_HEADING.match(line):
             continue
-        inline = line.split(":", 1)[1].strip(" *_") if ":" in line else ""
+        inline = _EMPHASIS.sub("", line.split(":", 1)[1]).strip(" *_") if ":" in line else ""
         if inline:
             items.append(inline)
         for following in lines[index + 1 :]:
             item = _LIST_ITEM.match(following)
             if item:
-                items.append(item.group(1).strip())
+                items.append(_EMPHASIS.sub("", item.group(1)).strip())
             elif not following.strip():
                 if items:
                     break
@@ -74,7 +78,11 @@ def source_link(payload: Any) -> str | None:
 
 
 def is_projection(question: str, answer: str, assumptions: list[str]) -> bool:
-    return bool(assumptions) or bool(_PROJECTION_WORDS.search(f"{question}\n{answer}"))
+    return (
+        bool(assumptions)
+        or bool(_WHAT_IF_QUESTION.search(question))
+        or bool(_PROJECTION_WORDS.search(f"{question}\n{answer}"))
+    )
 
 
 def disclaimer_for(question: str, answer: str, assumptions: list[str]) -> str:

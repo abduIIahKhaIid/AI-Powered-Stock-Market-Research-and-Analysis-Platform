@@ -52,7 +52,7 @@ export default function ScenarioChart({ spec }: { spec: ScenarioChartSpec }) {
               width={56}
             />
             <Tooltip
-              formatter={(value) => [`${compactUsd(Number(value))} USD`]}
+              formatter={(value, name) => [`${compactUsd(Number(value))} USD`, String(name)]}
               labelFormatter={(label) => `Fiscal year ${label}`}
             />
             <Legend />

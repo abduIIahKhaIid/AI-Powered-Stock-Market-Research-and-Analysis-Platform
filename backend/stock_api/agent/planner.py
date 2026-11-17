@@ -456,7 +456,9 @@ class Agent:
             yield AgentEvent("grounding", {"state": "removed", "removed": removed})
         answer = answer or NO_ANSWER
 
-        assumptions = list(dict.fromkeys(extract_assumptions(answer) + tool_assumptions(outcomes)))
+        # A tool's own assumptions (run_scenario) are the authoritative list; the model's
+        # Assumptions section, which restates them, stays in the answer text.
+        assumptions = list(dict.fromkeys(tool_assumptions(outcomes) or extract_assumptions(answer)))
         conversation = await remember_turn(
             conversation,
             message,
