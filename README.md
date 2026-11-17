@@ -271,6 +271,18 @@ Open http://localhost:5173 and ask a question, or pick one of the starter prompt
 - **Conversations.** The sidebar lists your chats; they are kept in this browser
   (`localStorage`), and follow-up questions reuse the API's `conversation_id`. On narrow screens
   the sidebar opens from the menu button.
+- **Fundamentals and comparisons.**
+  - `get_financial_statements` (income) and `get_earnings` answers come with a Recharts chart.
+    You can switch it between revenue and net income bars, diluted EPS bars, and gross,
+    operating and net margin lines. A data table is under it.
+  - `compare_stocks` answers come with a table you can sort by clicking a column heading.
+    Missing values go last, and hovering one explains why it is missing.
+  - Scenario charts show the bear-to-bull range as a shaded band (the "fan") around the base
+    case.
+  - Every chart and table has **Sources** and **Assumptions** chips. They open the filing links
+    and the formulas, settings and assumptions behind it.
+  - **Export CSV** first asks for approval with the same card as other sensitive actions. Then
+    the file is built in your browser.
 - **Approvals.** Before a sensitive action, such as running Python or starting a background
   job, a card shows:
   - the action and why it needs approval

@@ -11,6 +11,17 @@ export function caseColor(name: string, index: number): string {
   return CASE_COLORS[name] ?? EXTRA_COLORS[index % EXTRA_COLORS.length];
 }
 
+export type ScenarioRow = Record<string, number | [number, number]>;
+
+/** The bear-to-bull range for the fan, when both cases are present. */
+export function withFan(rows: Record<string, number>[]): ScenarioRow[] {
+  return rows.map((row) =>
+    typeof row.bear === "number" && typeof row.bull === "number"
+      ? { ...row, range: [row.bear, row.bull] as [number, number] }
+      : row,
+  );
+}
+
 /** Rows for the line chart: the base year (actual revenue) and one row per projected year. */
 export function scenarioRows(spec: ScenarioChartSpec): Record<string, number>[] {
   const years = new Map<number, Record<string, number>>();

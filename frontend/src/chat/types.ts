@@ -20,8 +20,20 @@ export interface Candle {
   volume: number;
 }
 
+/** One entry behind a chart's "Sources" chip (SCRUM-37). */
+export interface DetailSource {
+  label: string;
+  link?: string | null;
+}
+
+/** What the "Sources" and "Assumptions" chips of a chart or table open. */
+export interface ChartDetails {
+  sources?: DetailSource[];
+  assumptions?: string[];
+}
+
 /** Price chart sent by the agent after get_price_history, or by GET /api/prices (SCRUM-36). */
-export interface ChartSpec {
+export interface ChartSpec extends ChartDetails {
   kind: "price";
   symbol: string;
   name?: string | null;
@@ -49,7 +61,7 @@ export interface ScenarioRow {
 }
 
 /** Projected revenue per case, sent by the agent after run_scenario. */
-export interface ScenarioChartSpec {
+export interface ScenarioChartSpec extends ChartDetails {
   kind: "scenario";
   symbol: string;
   name?: string | null;
@@ -64,7 +76,50 @@ export interface ScenarioChartSpec {
   as_of?: string | null;
 }
 
-export type AnyChartSpec = ChartSpec | ScenarioChartSpec;
+/** One fiscal period of revenue, profit, EPS and margins (SCRUM-37). */
+export interface FundamentalsRow {
+  end: string;
+  revenue?: number | null;
+  net_income?: number | null;
+  operating_income?: number | null;
+  eps_diluted?: number | null;
+  gross_margin?: number | null;
+  operating_margin?: number | null;
+  net_margin?: number | null;
+  form?: string | null;
+  link?: string | null;
+}
+
+/** From get_financial_statements (income) or get_earnings. */
+export interface FundamentalsSpec extends ChartDetails {
+  kind: "fundamentals";
+  symbol: string;
+  name?: string | null;
+  freq: string;
+  rows: FundamentalsRow[];
+  source?: string | null;
+  as_of?: string | null;
+}
+
+export interface ComparisonMetric {
+  key: string;
+  label: string;
+  unit: string;
+  formula: string;
+}
+
+/** From compare_stocks: one row per symbol, one column per metric. */
+export interface ComparisonSpec extends ChartDetails {
+  kind: "comparison";
+  symbol: string;
+  symbols: string[];
+  metrics: ComparisonMetric[];
+  values: Record<string, Record<string, { value: number | null; error?: string | null }>>;
+  source?: string | null;
+  as_of?: string | null;
+}
+
+export type AnyChartSpec = ChartSpec | ScenarioChartSpec | FundamentalsSpec | ComparisonSpec;
 
 export type ApprovalStatus = "pending" | "approved" | "denied" | "expired";
 
