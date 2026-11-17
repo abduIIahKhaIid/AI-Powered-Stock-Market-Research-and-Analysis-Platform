@@ -146,6 +146,8 @@ class AlphaVantageClient:
         ttl = TTL.get(function, 3600) if ttl is None else ttl
         path = self._path(function, params)
         cached = json.loads(path.read_text()) if path.exists() else None
+        if cached and problem_in(cached.get("data")) is not None:
+            cached = None  # an error saved by an older version: never serve it
         if cached and self.clock() - cached["fetched_at"] < ttl:
             logger.info("alpha_vantage cache hit %s %s", function, params.get("symbol", ""))
             return cached["data"]
@@ -183,14 +185,39 @@ class AlphaVantageClient:
             raise
         except Exception as exc:  # noqa: BLE001 - transport errors from the MCP client
             raise AlphaVantageError(f"Alpha Vantage could not be reached ({exc}).") from exc
-        if not isinstance(data, dict):
+        problem = problem_in(data)
+        if problem is not None:
+            raise problem
+        if not data:
             raise AlphaVantageError(f"Alpha Vantage returned no data for {function}.")
-        message = data.get("Error Message") or data.get("Information") or data.get("Note")
-        if message and len(data) <= 2:
-            if any(word in str(message).lower() for word in _LIMIT_WORDS):
-                raise AlphaVantageLimitError(f"Alpha Vantage: {message}")
-            raise AlphaVantageError(f"Alpha Vantage: {message}")
         return data
+
+
+def problem_in(data: Any) -> AlphaVantageError | None:
+    """The error an Alpha Vantage answer carries, or None for real data.
+
+    Errors come as the API's own envelope ({"Error Message"|"Information"|"Note": ...}) or,
+    from the official MCP server, as {"error": {"type": ..., "message": ...}}.
+    """
+    if not isinstance(data, dict):
+        return AlphaVantageError("Alpha Vantage returned no data.")
+    error = data.get("error")
+    if isinstance(error, dict) and len(data) <= 2:
+        kind = str(error.get("type") or "")
+        message = str(error.get("message") or error.get("detail") or kind or "unknown error")
+        if kind == "invalid_api_key":
+            return AlphaVantageError(
+                f"Alpha Vantage rejected the API key ({message}). Check ALPHAVANTAGE_API_KEY."
+            )
+        if kind == "rate_limit" or any(word in message.lower() for word in _LIMIT_WORDS):
+            return AlphaVantageLimitError(f"Alpha Vantage: {message}")
+        return AlphaVantageError(f"Alpha Vantage: {message}")
+    notice = data.get("Error Message") or data.get("Information") or data.get("Note")
+    if notice and len(data) <= 2:
+        if any(word in str(notice).lower() for word in _LIMIT_WORDS):
+            return AlphaVantageLimitError(f"Alpha Vantage: {notice}")
+        return AlphaVantageError(f"Alpha Vantage: {notice}")
+    return None
 
 
 def _float(value: Any) -> float | None:

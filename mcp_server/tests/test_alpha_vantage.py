@@ -131,12 +131,42 @@ def test_the_daily_limit_stops_calls_and_stale_copies_are_used(tmp_path: Path) -
         ),
         (ConnectionError("refused"), AlphaVantageError),
         ("not json", AlphaVantageError),
+        ({}, AlphaVantageError),
+        # The official MCP server's own error envelope.
+        (
+            {"error": {"type": "invalid_api_key", "message": "the apikey is invalid"}},
+            AlphaVantageError,
+        ),
+        (
+            {"error": {"type": "rate_limit", "message": "25 requests per day", "detail": "x"}},
+            AlphaVantageLimitError,
+        ),
+        ({"error": {"type": "invalid_request", "message": "Invalid API call."}}, AlphaVantageError),
     ],
 )
 def test_alpha_vantage_errors(tmp_path: Path, answer: Any, error: type[Exception]) -> None:
     av = client(tmp_path, Caller(answer), Clock())
     with pytest.raises(error):
         av.fetch("TIME_SERIES_DAILY", {"symbol": "AAPL"})
+
+
+def test_error_envelopes_name_the_cause_and_are_not_cached(tmp_path: Path) -> None:
+    bad_key = {"error": {"type": "invalid_api_key", "message": "Invalid apikey."}}
+    caller, clock = Caller(bad_key, {"Symbol": "AAPL"}), Clock()
+    av = client(tmp_path, caller, clock)
+    with pytest.raises(AlphaVantageError, match="rejected the API key"):
+        av.fetch("COMPANY_OVERVIEW", {"symbol": "AAPL"})
+    assert av.fetch("COMPANY_OVERVIEW", {"symbol": "AAPL"}) == {"Symbol": "AAPL"}
+
+
+def test_an_error_cached_by_an_older_version_is_ignored(tmp_path: Path) -> None:
+    caller, clock = Caller({"Symbol": "AAPL"}), Clock()
+    av = client(tmp_path, caller, clock)
+    av.cache_dir.mkdir(parents=True)
+    old = {"fetched_at": clock(), "data": {"error": {"type": "rate_limit", "message": "slow"}}}
+    av._path("COMPANY_OVERVIEW", {"symbol": "AAPL"}).write_text(json.dumps(old))
+    assert av.fetch("COMPANY_OVERVIEW", {"symbol": "AAPL"}) == {"Symbol": "AAPL"}
+    assert len(caller.calls) == 1
 
 
 # --- prices and the fallback ---------------------------------------------------------
