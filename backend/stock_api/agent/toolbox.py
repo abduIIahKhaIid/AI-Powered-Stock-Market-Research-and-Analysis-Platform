@@ -6,6 +6,7 @@ One MCP client session is opened per chat turn and closed when the turn ends.
 from __future__ import annotations
 
 import json
+import re
 import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -117,8 +118,30 @@ class MCPToolbox:
         )
 
 
+# Chat-template control tokens (<|im_start|>, [INST], <<SYS>>, <tool_call> ...). Tool data
+# that contains them could pose as a new system or user turn, so they are defused (SCRUM-40).
+_CONTROL_TOKENS = re.compile(
+    r"<\|[^|<>\s]{1,40}\|>|\[/?INST\]|<</?SYS>>|</?(?:tool_call|tool_response|system|"
+    r"assistant|user)>",
+    re.IGNORECASE,
+)
+
+
+def defuse(text: str) -> str:
+    """Tool text with chat-template control tokens made inert (brackets swapped for parens)."""
+    return _CONTROL_TOKENS.sub(lambda m: m.group(0).translate(str.maketrans("<>[]", "()()")), text)
+
+
 def compact_for_model(outcome: ToolOutcome, max_chars: int = 6000) -> str:
-    """Serialize a tool outcome for the model, shrinking long lists (e.g. candles) to fit."""
+    """Serialize a tool outcome for the model, shrinking long lists (e.g. candles) to fit.
+
+    The result is JSON, so text from a tool always reaches the model as a quoted string value,
+    never as a message of its own.
+    """
+    return defuse(_compact(outcome, max_chars))
+
+
+def _compact(outcome: ToolOutcome, max_chars: int) -> str:
     if not outcome.ok:
         return json.dumps({"error": outcome.error})
 

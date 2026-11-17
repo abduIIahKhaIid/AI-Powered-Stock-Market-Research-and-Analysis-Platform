@@ -31,9 +31,9 @@ def create_agent(settings: Settings, approvals: ApprovalBroker | None = None) ->
 
         launcher = JobLauncher(get_job_store, get_registry, Queue())
 
-        def wrapper(toolbox: Toolbox, conversation_id: str) -> Toolbox:
+        def wrapper(toolbox: Toolbox, conversation_id: str, owner: str | None = None) -> Toolbox:
             return JobToolbox(
-                toolbox, launcher, conversation_id, settings.agent_python_wait_seconds
+                toolbox, launcher, conversation_id, settings.agent_python_wait_seconds, owner
             )
 
     return Agent(

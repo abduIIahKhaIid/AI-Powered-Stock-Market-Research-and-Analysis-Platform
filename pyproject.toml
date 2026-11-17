@@ -26,3 +26,5 @@ python_version = "3.12"
 ignore_missing_imports = true
 mypy_path = ["backend", "mcp_server", "sandbox/runner", "sandbox/image"]
 explicit_package_bases = true
+# Two conftest.py files map to the same module name ("tests.conftest"); check one of them.
+exclude = ["^backend/tests/conftest\\.py$"]

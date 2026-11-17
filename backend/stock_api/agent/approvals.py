@@ -24,6 +24,8 @@ class ApprovalRequest:
     reason: str
     estimate: str | None = None
     status: Status = "pending"
+    # The signed-in user who may decide it (SCRUM-40); None when sign-in is off.
+    owner: str | None = None
     requested_at: datetime = field(default_factory=lambda: datetime.now(UTC))
     decided_at: datetime | None = None
 
@@ -49,6 +51,7 @@ class ApprovalBroker:
         arguments: dict[str, Any],
         reason: str,
         estimate: str | None = None,
+        owner: str | None = None,
     ) -> ApprovalRequest:
         request = ApprovalRequest(
             id=uuid.uuid4().hex,
@@ -57,6 +60,7 @@ class ApprovalBroker:
             arguments=arguments,
             reason=reason,
             estimate=estimate,
+            owner=owner,
         )
         self._requests[request.id] = request
         self._waiters[request.id] = asyncio.get_running_loop().create_future()
@@ -68,8 +72,11 @@ class ApprovalBroker:
         except KeyError:
             raise ApprovalNotFound(approval_id) from None
 
-    def decide(self, approval_id: str, approve: bool) -> ApprovalRequest:
+    def decide(self, approval_id: str, approve: bool, owner: str | None = None) -> ApprovalRequest:
+        """Settle a request. Another user's request is reported as not found."""
         request = self.get(approval_id)
+        if request.owner is not None and request.owner != owner:
+            raise ApprovalNotFound(approval_id)
         if request.status != "pending":
             raise ApprovalAlreadyDecided(request.status)
         request.status = "approved" if approve else "denied"

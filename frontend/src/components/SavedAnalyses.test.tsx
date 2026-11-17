@@ -56,10 +56,13 @@ afterEach(() => {
 
 describe("Saved analyses", () => {
   it("lists saved analyses and reopens one with its table, files and source", async () => {
-    mockApi({
+    const fetchMock = mockApi({
       "/api/analyses": () => Response.json(SAVED),
       [`/api/jobs/${JOB_ID}/result`]: () => Response.json(RESULT),
+      [`/api/jobs/${JOB_ID}/files/`]: () => new Response("symbol,close\n"),
     });
+    const createObjectURL = vi.fn(() => "blob:csv");
+    vi.stubGlobal("URL", Object.assign(URL, { createObjectURL, revokeObjectURL: vi.fn() }));
     render(<App />);
 
     const list = await screen.findByRole("region", { name: "Saved analyses" });
@@ -86,8 +89,12 @@ describe("Saved analyses", () => {
       "IBM is not listed on NASDAQ.",
     );
 
-    const download = within(dialog).getByRole("link", { name: "Download indicator_scan.csv" });
-    expect(download).toHaveAttribute("href", `/api/jobs/${JOB_ID}/files/indicator_scan.csv`);
+    // A button, so the download can carry the sign-in token (SCRUM-40).
+    fireEvent.click(within(dialog).getByRole("button", { name: "Download indicator_scan.csv" }));
+    await waitFor(() => expect(createObjectURL).toHaveBeenCalled());
+    expect(fetchMock.mock.calls.map(([url]) => String(url))).toContain(
+      `/api/jobs/${JOB_ID}/files/indicator_scan.csv`,
+    );
     expect(dialog).toHaveTextContent("(2.0 KB)");
     expect(dialog).toHaveTextContent("Source: Yahoo Finance (yfinance), as of 2026-11-11");
     expect(dialog).toHaveTextContent("not financial advice");

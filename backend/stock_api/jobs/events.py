@@ -57,8 +57,11 @@ class PublishingJobStore:
         conversation_id: str | None = None,
         max_attempts: int = 3,
         idempotency_key: str | None = None,
+        owner: str | None = None,
     ) -> Job:
-        return self.inner.create(kind, params, conversation_id, max_attempts, idempotency_key)
+        return self.inner.create(
+            kind, params, conversation_id, max_attempts, idempotency_key, owner=owner
+        )
 
     def get(self, job_id: str) -> Job:
         return self.inner.get(job_id)
@@ -75,9 +78,13 @@ class PublishingJobStore:
         return job
 
     def list(
-        self, conversation_id: str | None = None, status: str | None = None, limit: int = 50
+        self,
+        conversation_id: str | None = None,
+        status: str | None = None,
+        limit: int = 50,
+        owner: str | None = None,
     ) -> list[Job]:
-        return self.inner.list(conversation_id, status, limit)
+        return self.inner.list(conversation_id, status, limit, owner=owner)
 
 
 class RedisPublisher:

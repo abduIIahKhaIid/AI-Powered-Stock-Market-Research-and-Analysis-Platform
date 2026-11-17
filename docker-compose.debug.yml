@@ -1,0 +1,19 @@
+# Debugging only: publish the internal services on 127.0.0.1 as well.
+#   docker compose -f docker-compose.yml -f docker-compose.debug.yml up
+# Normal use goes through Nginx (http://localhost:8080) and needs none of these.
+services:
+  postgres:
+    ports:
+      - "127.0.0.1:5432:5432"
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+  mcp:
+    ports:
+      - "127.0.0.1:8100:8100"
+  api:
+    ports:
+      - "127.0.0.1:8000:8000"
+  frontend:
+    ports:
+      - "127.0.0.1:5173:5173"

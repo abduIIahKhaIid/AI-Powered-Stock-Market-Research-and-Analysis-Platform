@@ -18,6 +18,7 @@ from pydantic import BaseModel, Field
 
 from .agent import Agent, AgentEvent
 from .agent.factory import get_agent
+from .auth import CurrentUser, owner_of
 from .llm import LLMConfigError
 
 router = APIRouter(tags=["chat"])
@@ -87,9 +88,14 @@ def agent_dependency() -> Agent:
     responses={200: {"content": {"text/event-stream": {}}}},
 )
 async def chat(
-    request: ChatRequest, agent: Annotated[Agent, Depends(agent_dependency)]
+    request: ChatRequest, agent: Annotated[Agent, Depends(agent_dependency)], user: CurrentUser
 ) -> StreamingResponse:
-    events = agent.run(request.message, mode=request.mode, conversation_id=request.conversation_id)
+    events = agent.run(
+        request.message,
+        mode=request.mode,
+        conversation_id=request.conversation_id,
+        owner=owner_of(user),
+    )
     return StreamingResponse(
         sse_stream(events),
         media_type="text/event-stream",

@@ -9,6 +9,7 @@ from pydantic import BaseModel
 
 from .agent.approvals import ApprovalAlreadyDecided, ApprovalBroker, ApprovalNotFound
 from .agent.factory import get_approval_broker
+from .auth import CurrentUser, owner_of
 
 router = APIRouter(tags=["approvals"])
 
@@ -28,9 +29,12 @@ async def decide(
     approval_id: Annotated[str, Path(pattern=r"^[0-9a-f]{32}$")],
     body: Decision,
     broker: Annotated[ApprovalBroker, Depends(get_approval_broker)],
+    user: CurrentUser,
 ) -> DecisionResult:
     try:
-        request = broker.decide(approval_id, approve=body.decision == "approve")
+        request = broker.decide(
+            approval_id, approve=body.decision == "approve", owner=owner_of(user)
+        )
     except ApprovalNotFound:
         raise HTTPException(status_code=404, detail="No such approval request.") from None
     except ApprovalAlreadyDecided as exc:

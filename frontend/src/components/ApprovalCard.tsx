@@ -3,6 +3,7 @@
  * needs approval, how long it takes and what it costs, with Approve and Deny.
  */
 import { useEffect, useId, useState } from "react";
+import { apiFetch } from "../auth/session";
 import { toolLabel } from "../chat/tools";
 import type { ApprovalItem } from "../chat/types";
 
@@ -14,7 +15,7 @@ interface Props {
 }
 
 async function postDecision(id: string, decision: "approve" | "deny") {
-  const response = await fetch(`/api/approvals/${id}`, {
+  const response = await apiFetch(`/api/approvals/${id}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ decision }),

@@ -2,6 +2,7 @@
  * Candlestick, volume and indicator chart for one symbol (SCRUM-36), drawn with
  * TradingView Lightweight Charts. The TradingView attribution stays visible (licence).
  */
+import { apiFetch } from "../auth/session";
 import {
   CandlestickSeries,
   createChart,
@@ -69,7 +70,7 @@ interface Props {
 
 async function defaultFetchPrices(symbol: string, period: string, interval: string) {
   const query = new URLSearchParams({ period, interval });
-  const response = await fetch(`/api/prices/${encodeURIComponent(symbol)}?${query}`);
+  const response = await apiFetch(`/api/prices/${encodeURIComponent(symbol)}?${query}`);
   if (!response.ok) {
     const body = (await response.json().catch(() => null)) as { detail?: string } | null;
     throw new Error(body?.detail ?? `Could not load prices (HTTP ${response.status}).`);

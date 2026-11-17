@@ -203,17 +203,29 @@ class JobLauncher:
         self._registry = registry
         self._queue = queue
 
-    def _start(self, kind_name: str, params: dict[str, Any], conversation_id: str) -> Job:
+    def _start(
+        self,
+        kind_name: str,
+        params: dict[str, Any],
+        conversation_id: str,
+        owner: str | None = None,
+    ) -> Job:
         kind = self._registry()[kind_name]
         valid = kind.validate(params)
         job = self._store().create(
-            kind.name, valid, conversation_id, max_attempts=kind.max_attempts
+            kind.name, valid, conversation_id, max_attempts=kind.max_attempts, owner=owner
         )
         self._queue.enqueue(job, kind)
         return job
 
-    async def start(self, kind_name: str, params: dict[str, Any], conversation_id: str) -> Job:
-        return await asyncio.to_thread(self._start, kind_name, params, conversation_id)
+    async def start(
+        self,
+        kind_name: str,
+        params: dict[str, Any],
+        conversation_id: str,
+        owner: str | None = None,
+    ) -> Job:
+        return await asyncio.to_thread(self._start, kind_name, params, conversation_id, owner)
 
     def title(self, kind_name: str) -> str:
         kind = self._registry().get(kind_name)
@@ -242,11 +254,14 @@ class JobToolbox:
         launcher: JobLauncher,
         conversation_id: str,
         wait_seconds: float = 75.0,
+        owner: str | None = None,
     ) -> None:
         self.inner = inner
         self.launcher = launcher
         self.conversation_id = conversation_id
         self.wait_seconds = wait_seconds
+        # The signed-in user (SCRUM-40); jobs started here belong to them.
+        self.owner = owner
 
     async def list_tools(self) -> list[ToolSpec]:
         specs = [*await self.inner.list_tools()]
@@ -268,7 +283,7 @@ class JobToolbox:
         if kind_name is None:
             return await self.inner.call(name, arguments)
         try:
-            job = await self.launcher.start(kind_name, arguments, self.conversation_id)
+            job = await self.launcher.start(kind_name, arguments, self.conversation_id, self.owner)
         except JobInputError as exc:
             return ToolOutcome.failure(name, arguments, str(exc))
         except Exception as exc:  # noqa: BLE001 - e.g. the queue or the database is down
@@ -294,7 +309,7 @@ class JobToolbox:
         self, name: str, kind_name: str, arguments: dict[str, Any]
     ) -> ToolOutcome:
         try:
-            job = await self.launcher.start(kind_name, arguments, self.conversation_id)
+            job = await self.launcher.start(kind_name, arguments, self.conversation_id, self.owner)
         except JobInputError as exc:
             return ToolOutcome.failure(name, arguments, str(exc))
         except Exception as exc:  # noqa: BLE001

@@ -1,5 +1,6 @@
 /** Live progress of background jobs (SCRUM-33): GET /api/jobs/{id}/events, read with fetch. */
 
+import { apiFetch } from "../auth/session";
 import { type RawSseEvent, SseParser } from "./sse";
 import type { JobDoneData, JobProgressData } from "./types";
 
@@ -14,7 +15,7 @@ export async function readJobEvents(
   handlers: JobHandlers,
   signal: AbortSignal,
 ): Promise<boolean> {
-  const response = await fetch(`/api/jobs/${jobId}/events`, {
+  const response = await apiFetch(`/api/jobs/${jobId}/events`, {
     headers: { Accept: "text/event-stream" },
     signal,
   });
@@ -86,7 +87,7 @@ export function watchJob(jobId: string, handlers: JobHandlers, retryMs = RETRY_M
 }
 
 export async function cancelJob(jobId: string): Promise<void> {
-  const response = await fetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
+  const response = await apiFetch(`/api/jobs/${jobId}/cancel`, { method: "POST" });
   // 409: the job already finished, which is fine.
   if (!response.ok && response.status !== 409) throw new Error(`HTTP ${response.status}`);
 }

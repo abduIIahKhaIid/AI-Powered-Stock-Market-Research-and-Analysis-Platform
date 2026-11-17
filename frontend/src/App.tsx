@@ -11,7 +11,12 @@ import type { SavedAnalysis } from "./jobs/types";
 // Keep following the stream only while the reader is near the bottom.
 const STICK_THRESHOLD_PX = 120;
 
-export default function App() {
+interface Props {
+  /** The signed-in user, when the server has sign-in turned on (SCRUM-40). */
+  user?: { username: string; onSignOut: () => void };
+}
+
+export default function App({ user }: Props = {}) {
   const chat = useChat();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [openAnalysis, setOpenAnalysis] = useState<SavedAnalysis | null>(null);
@@ -84,6 +89,16 @@ export default function App() {
           </button>
           <h1 className="chat-title">{active?.title ?? "New chat"}</h1>
           <ModeToggle mode={chat.mode} onChange={chat.setMode} />
+          {user && (
+            <div className="account">
+              <span className="account-name" title="Signed in">
+                {user.username}
+              </span>
+              <button type="button" className="link-button" onClick={user.onSignOut}>
+                Sign out
+              </button>
+            </div>
+          )}
         </header>
 
         <div className="chat-scroll" ref={scrollRef} onScroll={onScroll}>

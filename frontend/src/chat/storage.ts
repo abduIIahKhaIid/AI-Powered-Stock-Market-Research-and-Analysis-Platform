@@ -9,6 +9,30 @@ const CONVERSATIONS_KEY = "stock-research.conversations.v1";
 const MODE_KEY = "stock-research.mode";
 export const MAX_CONVERSATIONS = 50;
 
+let scope: string | null = null;
+
+/**
+ * Keep each signed-in user's conversations apart in this browser (SCRUM-40). The first user
+ * to sign in keeps the conversations saved before sign-in existed.
+ */
+export function setStorageScope(username: string | null): void {
+  scope = username ? username.toLowerCase() : null;
+  if (!scope) return;
+  try {
+    const shared = window.localStorage.getItem(CONVERSATIONS_KEY);
+    if (shared && window.localStorage.getItem(conversationsKey()) === null) {
+      window.localStorage.setItem(conversationsKey(), shared);
+      window.localStorage.removeItem(CONVERSATIONS_KEY);
+    }
+  } catch {
+    // Storage blocked: nothing to move.
+  }
+}
+
+function conversationsKey(): string {
+  return scope ? `${CONVERSATIONS_KEY}:${scope}` : CONVERSATIONS_KEY;
+}
+
 function interrupted(message: ChatMessage): ChatMessage {
   // An answer that was still streaming when the page closed can never finish.
   if (message.role === "assistant" && message.state === "streaming") {
@@ -25,7 +49,7 @@ function isConversation(value: unknown): value is Conversation {
 
 export function loadConversations(): Conversation[] {
   try {
-    const raw = window.localStorage.getItem(CONVERSATIONS_KEY);
+    const raw = window.localStorage.getItem(conversationsKey());
     if (!raw) return [];
     const parsed: unknown = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -42,7 +66,7 @@ export function loadConversations(): Conversation[] {
 export function saveConversations(conversations: Conversation[]): void {
   try {
     window.localStorage.setItem(
-      CONVERSATIONS_KEY,
+      conversationsKey(),
       JSON.stringify(conversations.slice(0, MAX_CONVERSATIONS)),
     );
   } catch {

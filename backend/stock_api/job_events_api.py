@@ -16,6 +16,7 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Depends, HTTPException, Path
 from fastapi.responses import StreamingResponse
 
+from .auth import CurrentUser, owner_of
 from .jobs import JobKind, JobStore, ResultStore, get_job_store, get_registry, get_result_store
 from .jobs.events import EventSource, progress_payload
 from .jobs.reporting import done_payload
@@ -81,11 +82,14 @@ async def job_events(
     results: Annotated[ResultStore, Depends(get_result_store)],
     source: Annotated[EventSource, Depends(event_source_dependency)],
     poll_seconds: Annotated[float, Depends(get_poll_seconds)],
+    user: CurrentUser,
 ) -> StreamingResponse:
     try:
-        await asyncio.to_thread(store.get, job_id)
+        job = await asyncio.to_thread(store.get, job_id)
     except JobNotFound:
         raise HTTPException(status_code=404, detail="No such job.") from None
+    if job.owner != owner_of(user):
+        raise HTTPException(status_code=404, detail="No such job.")
     return StreamingResponse(
         relay(job_id, store, registry, results, source, poll_seconds),
         media_type="text/event-stream",
