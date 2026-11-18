@@ -171,6 +171,25 @@ async def remember_job_report(
     await store.save(conversation_id, conversation)
 
 
+def rewind(conversation: Conversation, turns: int) -> Conversation:
+    """Forget the last `turns` questions and everything after the first of them.
+
+    Used when the user edits an earlier question: the edited text replaces that question, so
+    the old question, its answer and every later turn must not stay in the model's memory.
+    If the question was already folded into the summary, the summary goes too, because it
+    would still describe the old turn.
+    """
+    if turns <= 0:
+        return conversation
+    questions = [i for i, m in enumerate(conversation.messages) if m.get("role") == "user"]
+    if turns <= len(questions):
+        conversation.messages = conversation.messages[: questions[-turns]]
+    else:
+        conversation.messages = []
+        conversation.summary = ""
+    return conversation
+
+
 async def remember_turn(
     conversation: Conversation,
     user_message: str,

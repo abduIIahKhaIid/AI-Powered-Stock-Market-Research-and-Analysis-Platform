@@ -163,7 +163,19 @@ class TextDelta:
     text: str
 
 
-StreamEvent = TextDelta | ChatResult
+@dataclass(frozen=True)
+class ThinkingDelta:
+    """A piece of the model's reasoning, streamed before or between answer text.
+
+    Comes from ``<think>`` blocks in the content (local reasoning models) or from the
+    ``reasoning_content`` / ``reasoning`` field some providers send. It is shown to the user
+    as the collapsible "Thinking" panel and is never part of the answer.
+    """
+
+    text: str
+
+
+StreamEvent = TextDelta | ThinkingDelta | ChatResult
 
 
 class _ThinkFilter:
@@ -175,6 +187,13 @@ class _ThinkFilter:
         self._pending = ""
         self._inside = False
         self._emitted_any = False
+        self._thought: list[str] = []
+
+    def take_thought(self) -> str:
+        """Reasoning text read from <think> blocks since the last call."""
+        text = "".join(self._thought)
+        self._thought = []
+        return text
 
     def _emit(self, text: str) -> str:
         if not self._emitted_any:
@@ -191,8 +210,12 @@ class _ThinkFilter:
                 end = self._pending.find(self.CLOSE)
                 if end < 0:
                     # Keep only what could be the start of the closing tag.
-                    self._pending = self._pending[-(len(self.CLOSE) - 1) :]
+                    keep = len(self.CLOSE) - 1
+                    if len(self._pending) > keep:
+                        self._thought.append(self._pending[:-keep])
+                        self._pending = self._pending[-keep:]
                     break
+                self._thought.append(self._pending[:end])
                 self._pending = self._pending[end + len(self.CLOSE) :]
                 self._inside = False
                 continue
@@ -450,9 +473,17 @@ class LLMGateway:
                 delta = choice.delta
                 if delta is None:
                     continue
+                reasoning = getattr(delta, "reasoning_content", None) or getattr(
+                    delta, "reasoning", None
+                )
+                if isinstance(reasoning, str) and reasoning:
+                    yield ThinkingDelta(reasoning)
                 if delta.content:
                     raw_text.append(delta.content)
                     visible = think.feed(delta.content)
+                    thought = think.take_thought()
+                    if thought:
+                        yield ThinkingDelta(thought)
                     if visible:
                         yield TextDelta(visible)
                 for call_delta in delta.tool_calls or []:

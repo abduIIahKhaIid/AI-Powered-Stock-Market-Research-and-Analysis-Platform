@@ -204,6 +204,8 @@ export type ChatEvent =
   | { type: "conversation"; data: { conversation_id: string; mode: Mode } }
   | { type: "status"; data: { state: string; step: number } }
   | { type: "token"; data: { text: string; step: number } }
+  /** The model's reasoning (from <think> blocks or a reasoning field), for the Thinking panel. */
+  | { type: "thinking"; data: { text: string; step: number } }
   | {
       type: "tool_call";
       data: { id: string; name: string; arguments: Record<string, unknown>; step: number };
@@ -284,6 +286,14 @@ export interface ToolStep {
 
 export type AssistantState = "streaming" | "done" | "error" | "stopped";
 
+/** Reasoning the model streamed in one step. */
+export interface ThinkingBlock {
+  step: number;
+  text: string;
+}
+
+export type Feedback = "up" | "down";
+
 export interface UserMessage {
   id: string;
   role: "user";
@@ -300,6 +310,16 @@ export interface AssistantMessage {
   /** The model step the streamed text belongs to. */
   textStep: number;
   statusText?: string;
+  /** Reasoning shown in the collapsible Thinking panel, one block per model step. */
+  thinking?: ThinkingBlock[];
+  /** When the question was sent (ms since epoch). */
+  startedAt?: number;
+  /** When the text of the current step started streaming; cleared when it turns out to be a note. */
+  answerStartedAt?: number;
+  /** How long the assistant worked before it started the answer ("Thought for 6s"). */
+  thoughtMs?: number;
+  /** Thumbs up or down from the reader, kept with the conversation. */
+  feedback?: Feedback;
   tools: ToolStep[];
   sources: Source[];
   disclaimer?: string;

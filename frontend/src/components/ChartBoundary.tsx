@@ -27,7 +27,10 @@ export default class ChartBoundary extends Component<Props, State> {
   render() {
     if (this.state.failed) {
       return (
-        <p className="chart-error" role="note">
+        <p
+          className="rounded-xl border border-dashed border-border bg-muted/40 px-4 py-3 text-sm text-muted-foreground"
+          role="note"
+        >
           The {this.props.name} could not be shown. The answer and its sources are still above.
         </p>
       );

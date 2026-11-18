@@ -266,18 +266,44 @@ docker compose exec api python -m stock_api.agent.ask --detailed "How did AAPL m
 ## Using the web app
 
 Open http://localhost:8080, create an account (or sign in), and ask a question or pick one of
-the starter prompts. Your name and **Sign out** are in the header; conversations are kept per user.
+the starter cards. Your name and **Sign out** are at the bottom of the sidebar; conversations are
+kept per user.
+
+The interface is built with Tailwind CSS and Radix UI components (shadcn/ui style, in
+`frontend/src/components/ui`), with Motion for animations. It has light and dark themes.
 
 - **Streaming answers.** The answer appears as the model writes it (`POST /api/chat`, read as a
   Server-Sent Events stream). **Stop** cancels a running answer.
-- **Tool timeline.** Above each answer, a collapsible list shows every data fetch: the tool, its
-  arguments, a short preview of the result, the source, the as-of date and how long it took.
+- **Thinking panel.** Above each answer, a collapsible panel shows the assistant's work:
+  - the model's reasoning, when the model streams it (`<think>` blocks or a `reasoning_content`
+    field, sent as `thinking` events)
+  - every data fetch, with its arguments, a short preview of the result, the source, the as-of
+    date and how long it took; each step opens to its full input and output
+  - It opens by itself while the assistant works, then folds into one line
+    ("Thought for 6s · used 2 tools") when the answer starts. Click it to open it again.
 - **Sources and disclaimer.** Each answer ends with the sources it used and the
   not-financial-advice note.
-- **Simple / Detailed.** The toggle in the header is sent with every message and remembered.
-- **Conversations.** The sidebar lists your chats; they are kept in this browser
-  (`localStorage`), and follow-up questions reuse the API's `conversation_id`. On narrow screens
-  the sidebar opens from the menu button.
+- **Message actions.** Under each answer: copy, helpful / not helpful (kept with the
+  conversation) and ask again.
+- **Edit a question.** Hover a question and choose the pencil to change it. The edited question
+  is answered again and every answer after it is replaced. The API forgets the replaced turns
+  too (`rewind_turns` in `POST /api/chat`), so the new answer does not build on them. **Ask
+  again** works the same way for the last question.
+- **Rename a chat.** Use the pencil next to a chat in the sidebar (or double-click it), type the
+  new title and press Enter.
+- **Simple / Detailed.** The toggle in the message box is sent with every message and
+  remembered.
+- **Conversations.** The sidebar lists your chats grouped by date (Today, Yesterday, Previous 7
+  days…), with a search box. Chats are kept in this browser (`localStorage`), and follow-up
+  questions reuse the API's `conversation_id`. On narrow screens the sidebar opens from the menu
+  button; on wide screens it can be hidden.
+- **Settings.** The gear in the header opens the settings, saved in this browser:
+  - theme: light, dark or system
+  - chain of thought: full (reasoning and tools), tools only, or hidden (a status line only)
+  - animations on or off. They are also off when the operating system asks for less motion.
+- **Animated charts.** Price charts draw their candles in from left to right with a fixed price
+  scale, and the last price counts up. Fundamentals bars grow, scenario lines draw one case after
+  another, and comparison tables show a small bar per value.
 - **Fundamentals and comparisons.**
   - `get_financial_statements` (income) and `get_earnings` answers come with a Recharts chart.
     You can switch it between revenue and net income bars, diluted EPS bars, and gross,
@@ -345,6 +371,9 @@ cd frontend
 npm install
 npm run dev
 ```
+
+After pulling changes to `frontend/package.json` or `frontend/vite.config.ts`, rebuild the web
+app image: `docker compose up -d --build frontend` (the container mounts only `frontend/src`).
 
 On Linux or WSL use `scripts/setup_venv.sh` instead.
 

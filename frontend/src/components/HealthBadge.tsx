@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { cn } from "../lib/utils";
 
 type Health = { status: "ok" | "degraded"; services: Record<string, string> };
 
@@ -49,8 +50,20 @@ export default function HealthBadge() {
       : `Degraded: ${down.join(", ") || "check /health"}`;
 
   return (
-    <p className={`health ${state}`} role="status">
-      <span className="health-dot" aria-hidden="true" />
+    <p className="flex items-center gap-2 text-xs text-muted-foreground" role="status">
+      <span className="relative flex size-2" aria-hidden="true">
+        {state === "ok" && (
+          <span className="absolute inline-flex size-full animate-ping rounded-full bg-up opacity-50" />
+        )}
+        <span
+          className={cn(
+            "relative inline-flex size-2 rounded-full",
+            state === "ok" && "bg-up",
+            state === "degraded" && "bg-warning",
+            state === "down" && "bg-down",
+          )}
+        />
+      </span>
       {text}
     </p>
   );

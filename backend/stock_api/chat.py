@@ -1,7 +1,7 @@
 """POST /chat: ask a question and receive the answer as a Server-Sent Events stream.
 
-Events, in order: conversation, then status / token / tool_call / tool_result (repeated),
-then sources and done. On failure an error event ends the stream.
+Events, in order: conversation, then status / thinking / token / tool_call / tool_result
+(repeated), then sources and done. On failure an error event ends the stream.
 """
 
 from __future__ import annotations
@@ -30,6 +30,8 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=4000)
     mode: Literal["simple", "detailed"] = "simple"
     conversation_id: str | None = Field(default=None, pattern=r"^[0-9a-f]{32}$")
+    # The message replaces an earlier question: forget the last N questions and their answers.
+    rewind_turns: int = Field(default=0, ge=0, le=100)
 
 
 def format_sse(event: AgentEvent) -> str:
@@ -95,6 +97,7 @@ async def chat(
         mode=request.mode,
         conversation_id=request.conversation_id,
         owner=owner_of(user),
+        rewind_turns=request.rewind_turns,
     )
     return StreamingResponse(
         sse_stream(events),

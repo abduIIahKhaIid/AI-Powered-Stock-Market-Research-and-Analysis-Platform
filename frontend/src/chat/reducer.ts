@@ -20,9 +20,17 @@ export function newAssistantMessage(id: string, mode: Mode): AssistantMessage {
     text: "",
     textStep: 0,
     statusText: "Connecting…",
+    startedAt: Date.now(),
     tools: [],
     sources: [],
   };
+}
+
+/** Time from the question to the start of the answer, once known. */
+function thoughtFor(message: AssistantMessage): number | undefined {
+  if (message.thoughtMs !== undefined) return message.thoughtMs;
+  if (message.startedAt === undefined) return undefined;
+  return Math.max(0, (message.answerStartedAt ?? Date.now()) - message.startedAt);
 }
 
 function updateTool(
@@ -58,8 +66,22 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
 
     case "token": {
       const { text, step } = event.data;
-      if (step !== message.textStep) return { ...message, text, textStep: step };
+      if (step !== message.textStep) {
+        return { ...message, text, textStep: step, answerStartedAt: Date.now() };
+      }
       return { ...message, text: message.text + text };
+    }
+
+    case "thinking": {
+      const { text, step } = event.data;
+      if (!text) return message;
+      const blocks = message.thinking ?? [];
+      const last = blocks[blocks.length - 1];
+      const thinking =
+        last && last.step === step
+          ? [...blocks.slice(0, -1), { step, text: last.text + text }]
+          : [...blocks, { step, text }];
+      return { ...message, thinking, statusText: "Thinking…" };
     }
 
     case "tool_call": {
@@ -80,6 +102,7 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
       return {
         ...message,
         text: streamed ? "" : message.text,
+        answerStartedAt: undefined,
         tools: [...message.tools, tool],
         statusText: `${toolLabel(name)}…`,
       };
@@ -167,6 +190,7 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
         projection:
           event.data.projection ?? (message.charts ?? []).some((c) => c.kind === "scenario"),
         usage: event.data.usage,
+        thoughtMs: thoughtFor(message),
         statusText: undefined,
         tools: message.tools.map((tool) =>
           tool.status === "running" ? { ...tool, status: "error", error: "No result" } : tool,
@@ -176,6 +200,7 @@ export function applyEvent(message: AssistantMessage, event: ChatEvent): Assista
     case "error":
       return {
         ...message,
+        thoughtMs: thoughtFor(message),
         state: "error",
         error: { code: event.data.code, message: event.data.message },
         statusText: undefined,
@@ -195,8 +220,11 @@ export function finishMessage(
   const tools = message.tools.map((tool) =>
     tool.status === "running" ? { ...tool, status: "cancelled" as const } : tool,
   );
-  if (outcome === "stopped") return { ...message, state: "stopped", statusText: undefined, tools };
-  return { ...message, state: "error", error: outcome, statusText: undefined, tools };
+  const thoughtMs = thoughtFor(message);
+  if (outcome === "stopped") {
+    return { ...message, state: "stopped", statusText: undefined, tools, thoughtMs };
+  }
+  return { ...message, state: "error", error: outcome, statusText: undefined, tools, thoughtMs };
 }
 
 export const ACTIVE_JOB = new Set(["queued", "running"]);

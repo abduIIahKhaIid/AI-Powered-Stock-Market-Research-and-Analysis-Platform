@@ -2,6 +2,7 @@
  * Shows the sign-in screen until the user is signed in, then the app (SCRUM-40). When the
  * server has sign-in turned off, the app opens directly.
  */
+import { Loader2Icon, WifiOffIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import App from "./App";
 import { type AuthConfig, getAuthConfig, whoAmI } from "./auth/api";
@@ -14,6 +15,7 @@ import {
 } from "./auth/session";
 import { setStorageScope } from "./chat/storage";
 import SignIn from "./components/SignIn";
+import { Button } from "./components/ui/button";
 
 type State =
   | { kind: "checking" }
@@ -78,25 +80,32 @@ export default function AuthGate() {
 
   if (state.kind === "checking") {
     return (
-      <p className="signin-status muted" role="status">
-        Loading…
-      </p>
+      <div className="grid h-full place-items-center" role="status">
+        <span className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Loader2Icon className="size-4 animate-spin text-primary" aria-hidden="true" />
+          Loading…
+        </span>
+      </div>
     );
   }
   if (state.kind === "unreachable") {
     return (
-      <div className="signin-status" role="alert">
-        <p>The API could not be reached: {state.message}</p>
-        <button
-          type="button"
-          className="new-chat"
-          onClick={() => {
-            setState({ kind: "checking" });
-            setAttempt((count) => count + 1);
-          }}
+      <div className="grid h-full place-items-center p-4">
+        <div
+          className="max-w-md space-y-3 rounded-2xl border border-border bg-card p-6 text-center shadow-lg"
+          role="alert"
         >
-          Try again
-        </button>
+          <WifiOffIcon className="mx-auto size-8 text-down" aria-hidden="true" />
+          <p className="text-sm">The API could not be reached: {state.message}</p>
+          <Button
+            onClick={() => {
+              setState({ kind: "checking" });
+              setAttempt((count) => count + 1);
+            }}
+          >
+            Try again
+          </Button>
+        </div>
       </div>
     );
   }

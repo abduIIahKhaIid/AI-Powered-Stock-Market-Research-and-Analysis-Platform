@@ -1,11 +1,11 @@
 import type { ScenarioChartSpec } from "../chat/types";
 
 export const CASE_COLORS: Record<string, string> = {
-  base: "#0d6e4f",
-  bull: "#2563eb",
-  bear: "#c0392b",
+  base: "#10b981",
+  bull: "#6366f1",
+  bear: "#ef4444",
 };
-const EXTRA_COLORS = ["#9333ea", "#d97706", "#0e7490", "#be185d", "#4d7c0f"];
+const EXTRA_COLORS = ["#a855f7", "#f59e0b", "#06b6d4", "#ec4899", "#84cc16"];
 
 export function caseColor(name: string, index: number): string {
   return CASE_COLORS[name] ?? EXTRA_COLORS[index % EXTRA_COLORS.length];

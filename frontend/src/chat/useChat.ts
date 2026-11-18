@@ -22,6 +22,7 @@ import {
 import type {
   AssistantMessage,
   Conversation,
+  Feedback,
   JobDoneData,
   JobItem,
   JobProgressData,
@@ -43,6 +44,10 @@ export interface ChatController {
   select: (id: string) => void;
   remove: (id: string) => void;
   setMode: (mode: Mode) => void;
+  /** Thumbs up or down on an answer; the same choice again clears it. */
+  rate: (messageId: string, feedback: Feedback) => void;
+  /** Ask the last question of the open conversation again. */
+  retry: () => void;
   /** Goes up each time a background job finishes, so lists of saved results can refresh. */
   jobsFinished: number;
 }
@@ -251,6 +256,30 @@ export function useChat(): ChatController {
     setActiveId((current) => (current === id ? null : current));
   }, []);
 
+  const rate = useCallback((messageId: string, feedback: Feedback) => {
+    setConversations((list) =>
+      list.map((conversation) =>
+        conversation.messages.some((message) => message.id === messageId)
+          ? {
+              ...conversation,
+              messages: conversation.messages.map((message) =>
+                message.id === messageId && message.role === "assistant"
+                  ? { ...message, feedback: message.feedback === feedback ? undefined : feedback }
+                  : message,
+              ),
+            }
+          : conversation,
+      ),
+    );
+  }, []);
+
+  const retry = useCallback(() => {
+    const last = [...(activeConversation?.messages ?? [])]
+      .reverse()
+      .find((message) => message.role === "user");
+    if (last) send(last.text);
+  }, [activeConversation, send]);
+
   return {
     conversations,
     activeConversation,
@@ -262,6 +291,8 @@ export function useChat(): ChatController {
     select,
     remove,
     setMode,
+    rate,
+    retry,
     jobsFinished,
   };
 }

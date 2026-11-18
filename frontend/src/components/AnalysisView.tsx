@@ -1,7 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { DownloadIcon, FileBarChart2Icon } from "lucide-react";
+import { useEffect, useState } from "react";
 import { downloadFile, getResult } from "../jobs/api";
 import { formatBytes, formatNumber, isScanResult, scanColumns } from "../jobs/scan";
 import type { AnalysisResult, SavedAnalysis, ScanResult } from "../jobs/types";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "./ui/dialog";
 
 interface Props {
   analysis: SavedAnalysis;
@@ -11,9 +13,9 @@ interface Props {
 function ScanTable({ scan }: { scan: ScanResult }) {
   const columns = scanColumns(scan.rows);
   return (
-    <div className="table-wrap">
-      <table className="scan-table">
-        <caption className="visually-hidden">
+    <div className="overflow-x-auto rounded-lg border border-border scrollbar-thin">
+      <table className="w-full text-sm [&_thead]:bg-muted/60 [&_thead]:text-xs [&_thead]:text-muted-foreground [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_td]:px-3 [&_td]:py-2 [&_tbody_tr]:border-t [&_tbody_tr]:border-border">
+        <caption className="sr-only">
           Latest indicator values per symbol, period {scan.period}
         </caption>
         <thead>
@@ -33,17 +35,24 @@ function ScanTable({ scan }: { scan: ScanResult }) {
             <tr key={symbol}>
               <th scope="row">{symbol}</th>
               {row.error ? (
-                <td colSpan={columns.length + 2} className="scan-error">
+                <td colSpan={columns.length + 2} className="text-down">
                   {row.error}
                 </td>
               ) : (
                 <>
-                  <td className="num">
+                  <td className="text-right font-mono tabular-nums">
                     {formatNumber(row.last_close)}
-                    {row.last_bar && <span className="scan-bar">{row.last_bar.slice(0, 10)}</span>}
+                    {row.last_bar && (
+                      <span className="block text-[10px] text-muted-foreground">
+                        {row.last_bar.slice(0, 10)}
+                      </span>
+                    )}
                   </td>
                   {columns.map((column) => (
-                    <td className="num" key={`${column.indicator}.${column.series}`}>
+                    <td
+                      className="text-right font-mono tabular-nums"
+                      key={`${column.indicator}.${column.series}`}
+                    >
                       {formatNumber(row.latest?.[column.indicator]?.[column.series])}
                     </td>
                   ))}
@@ -77,8 +86,8 @@ function rowsOf(value: unknown): Row[] | null {
 function RowsTable({ rows }: { rows: Row[] }) {
   const columns = Object.keys(rows[0]);
   return (
-    <div className="table-wrap">
-      <table className="scan-table">
+    <div className="overflow-x-auto rounded-lg border border-border scrollbar-thin">
+      <table className="w-full text-sm [&_thead]:bg-muted/60 [&_thead]:text-xs [&_thead]:text-muted-foreground [&_th]:px-3 [&_th]:py-2 [&_th]:text-left [&_th]:font-medium [&_td]:px-3 [&_td]:py-2 [&_tbody_tr]:border-t [&_tbody_tr]:border-border">
         <thead>
           <tr>
             {columns.map((column) => (
@@ -94,7 +103,7 @@ function RowsTable({ rows }: { rows: Row[] }) {
               {columns.map((column) => {
                 const cell = row[column];
                 return typeof cell === "number" ? (
-                  <td className="num" key={column}>
+                  <td className="text-right font-mono tabular-nums" key={column}>
                     {formatNumber(cell)}
                   </td>
                 ) : (
@@ -114,7 +123,6 @@ export default function AnalysisView({ analysis, onClose }: Props) {
   const [data, setData] = useState<AnalysisResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [downloadError, setDownloadError] = useState<string | null>(null);
-  const closeRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -128,53 +136,32 @@ export default function AnalysisView({ analysis, onClose }: Props) {
     return () => controller.abort();
   }, [analysis.id]);
 
-  useEffect(() => {
-    const previous = document.activeElement as HTMLElement | null;
-    closeRef.current?.focus();
-    function onKey(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-    }
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("keydown", onKey);
-      previous?.focus?.();
-    };
-  }, [onClose]);
-
   const scan = data && isScanResult(data.result) ? data.result : null;
   const rows = data && !scan ? rowsOf(data.result) : null;
   const finished = new Date(analysis.finished_at ?? analysis.created_at).toLocaleString();
 
   return (
-    <div className="analysis-layer">
-      <div className="backdrop analysis-backdrop" onClick={onClose} aria-hidden="true" />
-      <div
-        className="analysis"
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="analysis-title"
-        aria-describedby="analysis-meta"
-      >
-        <header className="analysis-head">
-          <div>
-            <h2 id="analysis-title">{analysis.title}</h2>
-            <p id="analysis-meta" className="muted small">
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent closeLabel="Close analysis" className="w-[min(94vw,56rem)]">
+        <header className="flex items-start gap-3 border-b border-border px-5 py-4 pr-12">
+          <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-primary/10 text-primary">
+            <FileBarChart2Icon className="size-4.5" aria-hidden="true" />
+          </span>
+          <div className="min-w-0">
+            <DialogTitle className="text-base font-semibold">{analysis.title}</DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground">
               {analysis.summary ? `${analysis.summary}. ` : ""}Finished {finished}
-            </p>
+            </DialogDescription>
           </div>
-          <button ref={closeRef} type="button" className="icon-button" onClick={onClose}>
-            <span aria-hidden="true">×</span>
-            <span className="visually-hidden">Close analysis</span>
-          </button>
         </header>
 
         {analysis.files.length > 0 && (
-          <ul className="analysis-files">
+          <ul className="flex flex-wrap gap-2 px-5 pt-3">
             {analysis.files.map((file) => (
               <li key={file.name}>
                 <button
                   type="button"
-                  className="link-button"
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-primary hover:bg-muted"
                   onClick={() => {
                     setDownloadError(null);
                     downloadFile(analysis.id, file.name).catch((problem: unknown) =>
@@ -184,38 +171,44 @@ export default function AnalysisView({ analysis, onClose }: Props) {
                     );
                   }}
                 >
+                  <DownloadIcon className="size-3.5" aria-hidden="true" />
                   Download {file.name}
                 </button>{" "}
-                <span className="muted small">({formatBytes(file.bytes)})</span>
+                <span className="text-xs text-muted-foreground">({formatBytes(file.bytes)})</span>
               </li>
             ))}
           </ul>
         )}
         {downloadError && (
-          <p className="analysis-error" role="alert">
+          <p className="mx-5 mt-3 rounded-md bg-down/10 px-3 py-2 text-xs text-down" role="alert">
             {downloadError}
           </p>
         )}
 
-        <div className="analysis-body">
+        <div className="min-h-0 flex-1 overflow-auto px-5 py-4 scrollbar-thin">
           {error ? (
-            <p className="analysis-error" role="alert">
+            <p className="rounded-md bg-down/10 px-3 py-2 text-sm text-down" role="alert">
               {error}
             </p>
           ) : !data ? (
-            <p className="muted" role="status">
-              Loading the saved result…
-            </p>
+            <div className="space-y-2" role="status">
+              <span className="sr-only">Loading the saved result…</span>
+              {[0, 1, 2, 3].map((n) => (
+                <div key={n} className="h-8 animate-pulse rounded-md bg-muted" />
+              ))}
+            </div>
           ) : scan ? (
             <ScanTable scan={scan} />
           ) : rows ? (
             <RowsTable rows={rows} />
           ) : (
-            <pre className="analysis-json">{JSON.stringify(data.result, null, 2)}</pre>
+            <pre className="overflow-auto rounded-lg bg-muted p-3 font-mono text-xs">
+              {JSON.stringify(data.result, null, 2)}
+            </pre>
           )}
         </div>
 
-        <footer className="analysis-foot muted small">
+        <footer className="space-y-0.5 border-t border-border px-5 py-3 text-xs text-muted-foreground">
           {scan && scan.sources.length > 0 && (
             <p>
               Source:{" "}
@@ -226,7 +219,7 @@ export default function AnalysisView({ analysis, onClose }: Props) {
           )}
           <p>Educational information only, not financial advice.</p>
         </footer>
-      </div>
-    </div>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -105,11 +105,16 @@ describe("Chat screen", () => {
       conversation_id: null,
     });
 
-    const timeline = screen.getByRole("region", { name: "Tool activity" });
-    fireEvent.click(within(timeline).getByRole("button", { name: /Used 1 data step/ }));
-    expect(within(timeline).getByText("Latest quote")).toBeInTheDocument();
-    expect(within(timeline).getByText("AAPL")).toBeInTheDocument();
-    expect(within(timeline).getByText(/Yahoo Finance \(yfinance\) · as of/)).toBeInTheDocument();
+    // The Thinking panel folds away once the answer is in, leaving a summary line.
+    const thinking = screen.getByRole("region", { name: "Thinking" });
+    const toggle = within(thinking).getByRole("button", {
+      name: /Thought for \d+s\s*·\s*used 1 tool/,
+    });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    fireEvent.click(toggle);
+    expect(within(thinking).getByText("Latest quote")).toBeInTheDocument();
+    expect(within(thinking).getByText("AAPL")).toBeInTheDocument();
+    expect(within(thinking).getByText(/Yahoo Finance \(yfinance\) · as of/)).toBeInTheDocument();
 
     const sources = screen.getByRole("region", { name: "Sources" });
     expect(within(sources).getByText("Yahoo Finance (yfinance)")).toBeInTheDocument();
@@ -179,7 +184,7 @@ describe("Chat screen", () => {
     fireEvent.click(screen.getByRole("button", { name: /Apple's latest stock price/ }));
     await screen.findByText("231.5 USD");
 
-    fireEvent.click(screen.getByRole("button", { name: "+ New chat" }));
+    fireEvent.click(screen.getByRole("button", { name: "New chat" }));
     expect(screen.getByRole("heading", { name: /Ask about any NASDAQ stock/ })).toBeInTheDocument();
 
     const sidebar = within(screen.getByRole("complementary", { name: "Conversations" }));
@@ -188,5 +193,27 @@ describe("Chat screen", () => {
 
     fireEvent.click(sidebar.getByRole("button", { name: /Delete/ }));
     expect(screen.getByText("Your conversations will appear here.")).toBeInTheDocument();
+  });
+  it("rates an answer and switches the theme from the settings", async () => {
+    mockApi([sse(ANSWER_EVENTS)]);
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: /Apple's latest stock price/ }));
+    await screen.findByText("231.5 USD");
+
+    const helpful = screen.getByRole("button", { name: "Helpful" });
+    fireEvent.click(helpful);
+    expect(helpful).toHaveAttribute("aria-pressed", "true");
+    await waitFor(() =>
+      expect(window.localStorage.getItem("stock-research.conversations.v1")).toContain(
+        '"feedback":"up"',
+      ),
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Settings" }));
+    const dialog = await screen.findByRole("dialog", { name: "Settings" });
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Dark" }));
+    expect(document.documentElement).toHaveClass("dark");
+    fireEvent.click(within(dialog).getByRole("radio", { name: "Light" }));
+    expect(document.documentElement).not.toHaveClass("dark");
   });
 });

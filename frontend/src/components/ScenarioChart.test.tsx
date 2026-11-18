@@ -94,7 +94,7 @@ describe("ScenarioChart", () => {
     expect(within(table).getByRole("row", { name: /bear/ })).toHaveTextContent("-17.7%");
     expect(screen.getByText(/SEC EDGAR; Yahoo Finance, price as of/)).toBeInTheDocument();
     expect(screen.getByText(/not a forecast/)).toBeInTheDocument();
-    expect(screen.getByText(describeScenario(SPEC))).toHaveClass("visually-hidden");
+    expect(screen.getByText(describeScenario(SPEC))).toHaveClass("sr-only");
   });
 
   it("builds chart rows that start from the actual revenue", () => {

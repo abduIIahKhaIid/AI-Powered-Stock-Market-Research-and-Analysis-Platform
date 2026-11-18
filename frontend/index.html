@@ -3,7 +3,21 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="light dark" />
     <title>Stock Research Assistant</title>
+    <script>
+      // Apply the saved theme before the first paint, so dark mode does not flash white.
+      (function () {
+        try {
+          var saved = JSON.parse(localStorage.getItem("stock-research.settings") || "{}").theme;
+          var dark =
+            saved === "dark" ||
+            ((!saved || saved === "system") &&
+              window.matchMedia("(prefers-color-scheme: dark)").matches);
+          if (dark) document.documentElement.classList.add("dark");
+        } catch (e) {}
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
