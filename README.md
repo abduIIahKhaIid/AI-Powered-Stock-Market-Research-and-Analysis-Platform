@@ -340,6 +340,32 @@ The interface is built with Tailwind CSS and Radix UI components (shadcn/ui styl
 In Docker, Nginx forwards `/api/*` to the API. Without Docker, the Vite dev server does the same
 (`VITE_API_PROXY_TARGET`, default `http://localhost:8000`).
 
+## Sharing the app live for a while
+
+To let someone use the app for a few hours or days, run the stack on your computer and open a
+[Cloudflare Quick Tunnel](https://developers.cloudflare.com/tunnel/get-started/quick-tunnels/)
+to it. It needs no Cloudflare account, no domain and no open port, and the whole stack works,
+including the Python sandbox. The link lives only while your computer is on and the tunnel
+command is running, and it changes every time.
+
+1. Install cloudflared once: `winget install --id Cloudflare.cloudflared`
+2. In `.env`, use a hosted model, so answers do not depend on a Colab session, for example
+   `LLM_PROVIDER=groq`, `LLM_MODEL=openai/gpt-oss-120b`, `LLM_API_KEY=<your Groq key>` and an
+   empty `LLM_API_BASE`.
+3. Keep `AUTH_ENABLED=true` and set `AUTH_SIGNUP_CODE` to an invite code. Only people you give
+   the code to can create an account.
+4. Start the stack: `docker compose up -d --build`
+5. Open the tunnel: `cloudflared tunnel --url http://localhost:8080`
+6. Share the `https://….trycloudflare.com` address it prints. Press Ctrl+C to take it down.
+
+To let in only some people, add `--allowed-mail friend@example.com` (repeat it for more people).
+Visitors then confirm their email with a one-time code before they reach the app.
+
+The web app's dev server accepts `*.trycloudflare.com` hosts. For another public hostname (your
+own domain, another tunnel), list it in `VITE_ALLOWED_HOSTS` in `.env` and rebuild the
+`frontend` service. For a link that stays up when your computer is off, use a small VPS with
+Docker Compose (see `docs/system-design.md` for the services it runs).
+
 ## Running the Python services without Docker (Windows)
 
 Create the project virtual environment inside this folder (it never touches your system Python):

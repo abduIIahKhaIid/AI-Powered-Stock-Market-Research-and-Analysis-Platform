@@ -7,6 +7,16 @@ const apiTarget = process.env.VITE_API_PROXY_TARGET ?? "http://localhost:8000";
 // Docker Desktop on Windows does not pass file-change events into bind mounts, so in Docker the
 // dev server polls for changes (VITE_USE_POLLING=true); otherwise it would keep serving old code.
 const usePolling = process.env.VITE_USE_POLLING === "true";
+// Hostnames the dev server answers besides localhost (Vite blocks others against DNS
+// rebinding). Cloudflare Quick Tunnel URLs are allowed so the app can be shared for a while;
+// add more, comma-separated, in VITE_ALLOWED_HOSTS (a leading dot allows all subdomains).
+const allowedHosts = [
+  ".trycloudflare.com",
+  ...(process.env.VITE_ALLOWED_HOSTS ?? "")
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean),
+];
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
@@ -28,6 +38,7 @@ export default defineConfig({
   server: {
     host: true,
     port: 5173,
+    allowedHosts,
     watch: usePolling ? { usePolling: true, interval: 500 } : undefined,
     proxy: {
       "/api": {
