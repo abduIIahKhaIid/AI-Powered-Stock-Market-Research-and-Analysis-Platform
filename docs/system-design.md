@@ -57,7 +57,7 @@ All application services run as containers on one EC2 host (Docker Compose). The
 ## 3. Components
 
 ### 3.1 Frontend (React + Vite + TypeScript)
-- Chat panel with streaming answers (SSE), tool-activity timeline, approval prompts.
+- Chat panel with streaming answers (SSE), a collapsible Thinking panel (model reasoning and tool activity), approval prompts.
 - **Simple / Detailed** toggle sent with each message.
 - Charts rendered from JSON chart specs returned by the backend:
   - **TradingView Lightweight Charts**: candlesticks, volume, moving averages, Bollinger Bands, RSI/MACD panes. The TradingView attribution logo stays visible (license requirement).
@@ -67,7 +67,7 @@ All application services run as containers on one EC2 host (Docker Compose). The
 
 ### 3.2 API (FastAPI)
 - REST: auth, conversations, messages, jobs, symbols, exports.
-- SSE stream per conversation: `token`, `tool_call`, `tool_result`, `approval_required`, `job_progress`, `chart`, `table`, `sources`, `done`.
+- SSE stream per conversation: `token`, `thinking`, `tool_call`, `tool_result`, `approval_required`, `job_progress`, `chart`, `table`, `sources`, `done`.
 - JWT auth, per-user rate limits (Redis token bucket), request IDs for tracing.
 
 ### 3.3 Agent Harness

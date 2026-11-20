@@ -15,7 +15,14 @@ from datetime import date
 from typing import Any
 
 from ..chart_spec import chart_from_tool
-from ..llm import ChatResult, LLMError, LLMGateway, LLMUnavailableError, TextDelta
+from ..llm import (
+    ChatResult,
+    LLMError,
+    LLMGateway,
+    LLMUnavailableError,
+    TextDelta,
+    ThinkingDelta,
+)
 from .approvals import ApprovalBroker, ApprovalRequest
 from .audit import AuditLog
 from .composer import (
@@ -30,6 +37,7 @@ from .context import (
     Mode,
     build_messages,
     remember_turn,
+    rewind,
 )
 from .grounding import FIX_PROMPT, Evidence, GroundingReport, check_answer, remove_ungrounded
 from .policy import JOB_PREFIXES, ToolPolicy
@@ -193,15 +201,22 @@ class Agent:
         mode: Mode = "simple",
         conversation_id: str | None = None,
         owner: str | None = None,
+        rewind_turns: int = 0,
     ) -> AsyncIterator[AgentEvent]:
         """Answer one message. `owner` is the signed-in user's id (SCRUM-40): their
-        conversations, jobs and approvals are kept apart from other users'."""
+        conversations, jobs and approvals are kept apart from other users'.
+        `rewind_turns` > 0 means the message is an edited earlier question: that many of the
+        last questions (and their answers) are forgotten first."""
         conversation_id = conversation_id or uuid.uuid4().hex
         yield AgentEvent("conversation", {"conversation_id": conversation_id, "mode": mode})
 
         # Another user sending the same conversation id gets a separate, empty conversation.
         store_key = f"{owner}:{conversation_id}" if owner else conversation_id
         conversation = await self.store.load(store_key)
+        if rewind_turns > 0:
+            # Saved at once, so a failed answer does not bring the replaced turns back.
+            conversation = rewind(conversation, rewind_turns)
+            await self.store.save(store_key, conversation)
         messages = build_messages(conversation, message, mode, self.today())
         totals = _Totals()
         sources: dict[tuple[str, str | None], dict[str, Any]] = {}
@@ -247,6 +262,8 @@ class Agent:
                         ):
                             if isinstance(event, TextDelta):
                                 yield AgentEvent("token", {"text": event.text, "step": step})
+                            elif isinstance(event, ThinkingDelta):
+                                yield AgentEvent("thinking", {"text": event.text, "step": step})
                             else:
                                 result = event
                         if result is None:
@@ -425,6 +442,8 @@ class Agent:
                 async for event in self.gateway.stream_chat(fix_messages):
                     if isinstance(event, TextDelta):
                         yield AgentEvent("token", {"text": event.text, "step": step})
+                    elif isinstance(event, ThinkingDelta):
+                        yield AgentEvent("thinking", {"text": event.text, "step": step})
                     else:
                         revised = event
             except LLMError as exc:

@@ -2,10 +2,14 @@
  * Asks the user before a sensitive action runs (SCRUM-26, SCRUM-38): what will run, why it
  * needs approval, how long it takes and what it costs, with Approve and Deny.
  */
-import { useEffect, useId, useState } from "react";
+import { CheckIcon, ChevronRightIcon, ShieldAlertIcon, TimerIcon, XIcon } from "lucide-react";
+import { type ReactNode, useEffect, useId, useState } from "react";
 import { apiFetch } from "../auth/session";
 import { toolLabel } from "../chat/tools";
 import type { ApprovalItem } from "../chat/types";
+import { cn } from "../lib/utils";
+import { Button } from "./ui/button";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./ui/collapsible";
 
 interface Props {
   item: ApprovalItem;
@@ -47,6 +51,83 @@ function useCountdown(expiresAt: number | undefined, now: () => number): number 
   return left;
 }
 
+interface BoxProps {
+  titleId: string;
+  describedBy?: string;
+  facts: [string, ReactNode, string?][];
+  children: ReactNode;
+  className?: string;
+}
+
+/** The shared look of every approval: an amber card with the facts and two buttons. */
+export function ApprovalBox({ titleId, describedBy, facts, children, className }: BoxProps) {
+  return (
+    <section
+      aria-labelledby={titleId}
+      aria-describedby={describedBy}
+      className={cn(
+        "animate-fade-up overflow-hidden rounded-xl border border-warning/50 bg-warning/[0.07] shadow-xs",
+        className,
+      )}
+    >
+      <div className="flex items-center gap-2 border-b border-warning/30 px-4 py-2.5">
+        <ShieldAlertIcon className="size-4 text-amber-600 dark:text-warning" aria-hidden="true" />
+        <h3 id={titleId} className="text-sm font-semibold">
+          Approval needed
+        </h3>
+      </div>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1.5 px-4 py-3 text-sm">
+        {facts.map(([term, detail, id]) => (
+          <div key={term} className="contents">
+            <dt className="text-muted-foreground">{term}</dt>
+            <dd id={id} className="text-foreground">
+              {detail}
+            </dd>
+          </div>
+        ))}
+      </dl>
+      {children}
+    </section>
+  );
+}
+
+export function ApprovalActions({
+  label,
+  disabled,
+  onApprove,
+  onDeny,
+}: {
+  label: string;
+  disabled?: boolean;
+  onApprove: () => void;
+  onDeny: () => void;
+}) {
+  return (
+    <div className="flex gap-2 px-4 pb-3">
+      <Button
+        size="sm"
+        variant="success"
+        disabled={disabled}
+        aria-label={`Approve: ${label}`}
+        onClick={onApprove}
+      >
+        <CheckIcon aria-hidden="true" />
+        Approve
+      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={disabled}
+        aria-label={`Deny: ${label}`}
+        onClick={onDeny}
+      >
+        <XIcon aria-hidden="true" />
+        Deny
+      </Button>
+    </div>
+  );
+}
+
 export default function ApprovalCard({ item, sendDecision = postDecision, now = Date.now }: Props) {
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -55,8 +136,18 @@ export default function ApprovalCard({ item, sendDecision = postDecision, now = 
   const action = toolLabel(item.tool);
 
   if (item.status !== "pending") {
+    const approved = item.status === "approved";
     return (
-      <p className={`approval-done ${item.status}`} role="status">
+      <p
+        role="status"
+        className={cn(
+          "inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs",
+          approved
+            ? "border-up/30 bg-up/10 text-up"
+            : "border-border bg-muted text-muted-foreground",
+        )}
+      >
+        {approved ? <CheckIcon className="size-3.5" /> : <XIcon className="size-3.5" />}
         {action}: {DONE_TEXT[item.status]}
       </p>
     );
@@ -73,67 +164,60 @@ export default function ApprovalCard({ item, sendDecision = postDecision, now = 
     }
   }
 
+  const facts: [string, ReactNode, string?][] = [
+    ["Action", action],
+    ["Why it asks", item.reason, `${id}-reason`],
+    ["Time and cost", item.estimate || "No estimate for this action."],
+  ];
+  if (left !== null) {
+    facts.push([
+      "Waits for you",
+      left > 0 ? (
+        <span
+          className="inline-flex items-center gap-1 font-mono tabular-nums"
+          aria-label={`${remaining(left)} minutes left`}
+        >
+          <TimerIcon className="size-3.5" aria-hidden="true" />
+          {remaining(left)} left
+        </span>
+      ) : (
+        "Time is up"
+      ),
+    ]);
+  }
+
   return (
-    <section
-      className="approval-card"
-      aria-labelledby={`${id}-title`}
-      aria-describedby={`${id}-reason`}
-    >
-      <p className="visually-hidden" role="status">
+    <ApprovalBox titleId={`${id}-title`} describedBy={`${id}-reason`} facts={facts}>
+      <p className="sr-only" role="status">
         Approval needed: {action}.
       </p>
-      <h3 id={`${id}-title`}>Approval needed</h3>
-      <dl className="approval-facts">
-        <dt>Action</dt>
-        <dd>{action}</dd>
-        <dt>Why it asks</dt>
-        <dd id={`${id}-reason`}>{item.reason}</dd>
-        <dt>Time and cost</dt>
-        <dd>{item.estimate || "No estimate for this action."}</dd>
-        {left !== null && (
-          <>
-            <dt>Waits for you</dt>
-            <dd>
-              {left > 0 ? (
-                <span aria-label={`${remaining(left)} minutes left`}>{remaining(left)} left</span>
-              ) : (
-                "Time is up"
-              )}
-            </dd>
-          </>
-        )}
-      </dl>
       {Object.keys(item.arguments).length > 0 && (
-        <details>
-          <summary>Show the details</summary>
-          <pre>{JSON.stringify(item.arguments, null, 2)}</pre>
-        </details>
+        <Collapsible className="px-4 pb-3">
+          <CollapsibleTrigger className="group inline-flex cursor-pointer items-center gap-1 text-xs text-muted-foreground hover:text-foreground">
+            <ChevronRightIcon
+              className="size-3.5 transition-transform group-data-[state=open]:rotate-90"
+              aria-hidden="true"
+            />
+            Show the details
+          </CollapsibleTrigger>
+          <CollapsibleContent>
+            <pre className="mt-2 max-h-48 overflow-auto rounded-md border border-border bg-card p-2.5 font-mono text-[11.5px] scrollbar-thin">
+              {JSON.stringify(item.arguments, null, 2)}
+            </pre>
+          </CollapsibleContent>
+        </Collapsible>
       )}
       {error && (
-        <p className="chart-error" role="alert">
+        <p className="mx-4 mb-3 rounded-md bg-down/10 px-3 py-2 text-xs text-down" role="alert">
           {error}
         </p>
       )}
-      <div className="approval-actions">
-        <button
-          type="button"
-          className="approve"
-          disabled={sending}
-          aria-label={`Approve: ${action}`}
-          onClick={() => answer("approve")}
-        >
-          Approve
-        </button>
-        <button
-          type="button"
-          className="deny"
-          disabled={sending}
-          aria-label={`Deny: ${action}`}
-          onClick={() => answer("deny")}
-        >
-          Deny
-        </button>
-      </div>
-    </section>
+      <ApprovalActions
+        label={action}
+        disabled={sending}
+        onApprove={() => void answer("approve")}
+        onDeny={() => void answer("deny")}
+      />
+    </ApprovalBox>
   );
 }

@@ -1,0 +1,230 @@
+@import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+/* Dark mode follows the `dark` class on <html> (set from the settings, see settings.tsx). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Design tokens. Components only use the Tailwind names below (bg-card, text-muted-foreground,
+   border-border, …), so the light and dark themes are switched here in one place. */
+:root {
+  --background: oklch(0.985 0.002 260);
+  --foreground: oklch(0.21 0.02 265);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.02 265);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.02 265);
+  --primary: oklch(0.52 0.2 268);
+  --primary-foreground: oklch(0.99 0 0);
+  --secondary: oklch(0.96 0.006 265);
+  --secondary-foreground: oklch(0.28 0.02 265);
+  --muted: oklch(0.965 0.004 265);
+  --muted-foreground: oklch(0.5 0.02 265);
+  --accent: oklch(0.95 0.02 268);
+  --accent-foreground: oklch(0.32 0.12 268);
+  --border: oklch(0.91 0.006 265);
+  --input: oklch(0.89 0.008 265);
+  --ring: oklch(0.6 0.17 268);
+  --up: oklch(0.6 0.15 160);
+  --down: oklch(0.6 0.2 25);
+  --warning: oklch(0.75 0.15 75);
+  --sidebar: oklch(0.97 0.004 265);
+  --chart-grid: oklch(0.93 0.004 265);
+  --chart-text: oklch(0.52 0.02 265);
+  --chart-1: oklch(0.55 0.2 268);
+  --chart-2: oklch(0.62 0.15 160);
+  --chart-3: oklch(0.6 0.2 300);
+  --chart-4: oklch(0.72 0.15 65);
+  --chart-5: oklch(0.6 0.2 25);
+}
+
+.dark {
+  --background: oklch(0.17 0.012 265);
+  --foreground: oklch(0.95 0.005 265);
+  --card: oklch(0.205 0.014 265);
+  --card-foreground: oklch(0.95 0.005 265);
+  --popover: oklch(0.22 0.014 265);
+  --popover-foreground: oklch(0.95 0.005 265);
+  --primary: oklch(0.68 0.16 268);
+  --primary-foreground: oklch(0.16 0.02 265);
+  --secondary: oklch(0.26 0.014 265);
+  --secondary-foreground: oklch(0.92 0.005 265);
+  --muted: oklch(0.24 0.012 265);
+  --muted-foreground: oklch(0.7 0.015 265);
+  --accent: oklch(0.28 0.04 268);
+  --accent-foreground: oklch(0.9 0.05 268);
+  --border: oklch(0.29 0.012 265);
+  --input: oklch(0.33 0.012 265);
+  --ring: oklch(0.68 0.16 268);
+  --up: oklch(0.72 0.15 160);
+  --down: oklch(0.68 0.19 25);
+  --warning: oklch(0.8 0.14 75);
+  --sidebar: oklch(0.15 0.012 265);
+  --chart-grid: oklch(0.27 0.012 265);
+  --chart-text: oklch(0.72 0.015 265);
+  --chart-1: oklch(0.7 0.16 268);
+  --chart-2: oklch(0.74 0.14 160);
+  --chart-3: oklch(0.72 0.17 300);
+  --chart-4: oklch(0.8 0.14 70);
+  --chart-5: oklch(0.7 0.18 25);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-up: var(--up);
+  --color-down: var(--down);
+  --color-warning: var(--warning);
+  --color-sidebar: var(--sidebar);
+
+  --font-sans:
+    "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial,
+    sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "Cascadia Code", Menlo, Consolas, monospace;
+
+  --animate-collapsible-down: collapsible-down 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  --animate-collapsible-up: collapsible-up 180ms ease-in;
+  --animate-shimmer: shimmer 2.2s linear infinite;
+  --animate-caret: caret 1s steps(1) infinite;
+  --animate-fade-up: fade-up 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  --animate-indeterminate: indeterminate 1.4s ease-in-out infinite;
+
+  @keyframes collapsible-down {
+    from {
+      height: 0;
+      opacity: 0;
+    }
+    to {
+      height: var(--radix-collapsible-content-height);
+      opacity: 1;
+    }
+  }
+  @keyframes collapsible-up {
+    from {
+      height: var(--radix-collapsible-content-height);
+      opacity: 1;
+    }
+    to {
+      height: 0;
+      opacity: 0;
+    }
+  }
+  @keyframes shimmer {
+    from {
+      background-position: 200% 0;
+    }
+    to {
+      background-position: -200% 0;
+    }
+  }
+  @keyframes caret {
+    50% {
+      opacity: 0;
+    }
+  }
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+  @keyframes indeterminate {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(250%);
+    }
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  html,
+  body,
+  #root {
+    @apply h-full;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "cv11", "ss01";
+  }
+  ::selection {
+    @apply bg-primary/20;
+  }
+  :focus-visible {
+    @apply outline-2 outline-offset-2 outline-ring;
+  }
+}
+
+@layer components {
+  /* Text with a light sweeping across it: the live "Thinking…" label. */
+  .text-shimmer {
+    background: linear-gradient(
+        90deg,
+        var(--muted-foreground) 0%,
+        var(--muted-foreground) 40%,
+        var(--foreground) 50%,
+        var(--muted-foreground) 60%,
+        var(--muted-foreground) 100%
+      )
+      0 0 / 200% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+    @apply animate-shimmer;
+  }
+
+  /* Blinking caret at the end of a streaming answer. */
+  .streaming-caret > :last-child::after {
+    content: "";
+    display: inline-block;
+    width: 0.5em;
+    height: 1.05em;
+    margin-left: 2px;
+    vertical-align: text-bottom;
+    border-radius: 2px;
+    background: var(--primary);
+    @apply animate-caret;
+  }
+
+  .scrollbar-thin {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+
+  /* TradingView's attribution logo must stay visible; keep it above the canvas. */
+  .tv-chart a[href*="tradingview"] {
+    z-index: 3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

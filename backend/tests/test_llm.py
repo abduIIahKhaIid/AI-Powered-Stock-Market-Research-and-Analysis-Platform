@@ -500,3 +500,44 @@ async def test_failed_primary_is_skipped_during_cooldown_then_retried() -> None:
     assert third.content == "primary back"
     assert third.used_fallback is False
     assert not gateway.primary_cooling_down
+
+
+# --- streamed reasoning for the "Thinking" panel ---------------------------------------
+
+from stock_api.llm import ThinkingDelta  # noqa: E402
+
+
+def test_think_filter_keeps_the_reasoning_for_the_thinking_panel() -> None:
+    think = _ThinkFilter()
+    visible, thought = [], []
+    for piece in ["<thi", "nk>check the ", "quote first</th", "ink>Answer"]:
+        visible.append(think.feed(piece))
+        thought.append(think.take_thought())
+    visible.append(think.flush())
+    assert "".join(visible) == "Answer"
+    assert "".join(thought) == "check the quote first"
+
+
+async def test_stream_yields_thinking_from_think_blocks_and_reasoning_fields() -> None:
+    reasoning = chunk()
+    reasoning.choices[0].delta.reasoning_content = "Need the price. "  # type: ignore[attr-defined]
+    stream = FakeStream(
+        [
+            reasoning,
+            chunk("<think>Use get_quote.</think>"),
+            chunk("AAPL closed at 107.1 USD."),
+            chunk(finish="stop"),
+        ]
+    )
+    gateway, _ = gateway_with(stream)  # type: ignore[arg-type]
+    thinking, text, final = [], [], None
+    async for event in gateway.stream_chat([{"role": "user", "content": "x"}]):
+        if isinstance(event, ThinkingDelta):
+            thinking.append(event.text)
+        elif isinstance(event, TextDelta):
+            text.append(event.text)
+        else:
+            final = event
+    assert "".join(thinking) == "Need the price. Use get_quote."
+    assert "".join(text) == "AAPL closed at 107.1 USD."
+    assert final is not None and final.content == "AAPL closed at 107.1 USD."

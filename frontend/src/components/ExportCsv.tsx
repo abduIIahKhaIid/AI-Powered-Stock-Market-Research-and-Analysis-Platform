@@ -2,8 +2,11 @@
  * CSV export behind an approval (SCRUM-37): the same kind of card as other sensitive actions,
  * then the file is built in the browser.
  */
+import { DownloadIcon } from "lucide-react";
 import { useId, useState } from "react";
 import { downloadCsv, type Cell } from "../charts/csv";
+import { ApprovalActions, ApprovalBox } from "./ApprovalCard";
+import { Chip } from "./ui/chip";
 
 interface Props {
   /** What is exported, e.g. "the comparison of AAPL, MSFT". */
@@ -21,53 +24,44 @@ export default function ExportCsv({ label, filename, rows, download = downloadCs
 
   if (state === "asking") {
     return (
-      <section className="approval-card export-approval" aria-labelledby={`${id}-title`}>
-        <h3 id={`${id}-title`}>Approval needed</h3>
-        <dl className="approval-facts">
-          <dt>Action</dt>
-          <dd>Export {label} as CSV</dd>
-          <dt>Why it asks</dt>
-          <dd>Exports data to a file you can share; the data sources' terms still apply.</dd>
-          <dt>Time and cost</dt>
-          <dd>Instant, built in your browser ({rows.length - 1} rows). No cost.</dd>
-        </dl>
-        <div className="approval-actions">
-          <button
-            type="button"
-            className="approve"
-            aria-label={`Approve: export ${label} as CSV`}
-            onClick={() => {
+      <div className="basis-full pt-1">
+        <ApprovalBox
+          titleId={`${id}-title`}
+          facts={[
+            ["Action", `Export ${label} as CSV`],
+            [
+              "Why it asks",
+              "Exports data to a file you can share; the data sources' terms still apply.",
+            ],
+            ["Time and cost", `Instant, built in your browser (${rows.length - 1} rows). No cost.`],
+          ]}
+        >
+          <ApprovalActions
+            label={`export ${label} as CSV`}
+            onApprove={() => {
               download(filename, rows);
               setState("exported");
             }}
-          >
-            Approve
-          </button>
-          <button
-            type="button"
-            className="deny"
-            aria-label={`Deny: export ${label} as CSV`}
-            onClick={() => setState("denied")}
-          >
-            Deny
-          </button>
-        </div>
-      </section>
+            onDeny={() => setState("denied")}
+          />
+        </ApprovalBox>
+      </div>
     );
   }
 
   return (
-    <div className="export-row">
-      <button type="button" className="chip" onClick={() => setState("asking")}>
+    <div className="flex items-center gap-2">
+      <Chip onClick={() => setState("asking")}>
+        <DownloadIcon aria-hidden="true" />
         Export CSV
-      </button>
+      </Chip>
       {state === "exported" && (
-        <span className="muted small" role="status">
+        <span className="text-xs text-up" role="status">
           Exported {filename}.
         </span>
       )}
       {state === "denied" && (
-        <span className="muted small" role="status">
+        <span className="text-xs text-muted-foreground" role="status">
           Not exported.
         </span>
       )}

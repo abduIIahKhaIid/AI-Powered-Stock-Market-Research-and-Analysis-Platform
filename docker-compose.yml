@@ -166,6 +166,8 @@ services:
       VITE_API_PROXY_TARGET: http://api:8000
       # Windows bind mounts send no file events: poll so edits and git pulls show up.
       VITE_USE_POLLING: "true"
+      # Extra public hostnames for the dev server, e.g. a tunnel or a domain (comma-separated).
+      VITE_ALLOWED_HOSTS: ${VITE_ALLOWED_HOSTS:-}
     volumes:
       - ./frontend/src:/app/src
     depends_on:

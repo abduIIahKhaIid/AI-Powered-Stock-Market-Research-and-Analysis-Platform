@@ -226,7 +226,7 @@ describe("Background job progress", () => {
     };
     render(<JobCard job={job} />);
     const card = screen.getByRole("region", { name: "Indicator scan progress" });
-    expect(card).toHaveClass("retrying");
+    expect(card).toHaveAttribute("data-state", "retrying");
     expect(within(card).getByText("Retrying")).toBeInTheDocument();
     expect(card).toHaveTextContent(
       "Attempt 1 of 3 failed; trying again. Last error: TransientJobError: 429 Too Many Requests",

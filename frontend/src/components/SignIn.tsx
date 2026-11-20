@@ -1,7 +1,9 @@
 /** Sign in, or create an account (SCRUM-40). */
-import { type FormEvent, useId, useState } from "react";
+import { LockIcon, TrendingUpIcon } from "lucide-react";
+import { type FormEvent, type ReactNode, useId, useState } from "react";
 import { type AuthConfig, createAccount, signIn } from "../auth/api";
 import type { Session } from "../auth/session";
+import { Button } from "./ui/button";
 
 interface Props {
   config: AuthConfig;
@@ -12,6 +14,21 @@ interface Props {
   submitSignIn?: typeof signIn;
   submitCreate?: typeof createAccount;
 }
+
+function Field({ label, children, hint }: { label: string; children: ReactNode; hint?: string }) {
+  return (
+    <div className="space-y-1">
+      <label className="block space-y-1.5">
+        <span className="text-sm font-medium">{label}</span>
+        {children}
+      </label>
+      {hint && <small className="block text-xs text-muted-foreground">{hint}</small>}
+    </div>
+  );
+}
+
+const INPUT =
+  "h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none transition-shadow focus:border-primary/50 focus:ring-4 focus:ring-primary/10";
 
 export default function SignIn({
   config,
@@ -46,23 +63,40 @@ export default function SignIn({
 
   const action = creating ? "Create account" : "Sign in";
   return (
-    <main className="signin">
+    <main className="relative grid min-h-full place-items-center overflow-hidden bg-background p-4">
+      <div
+        className="pointer-events-none absolute -top-40 left-1/2 size-[36rem] -translate-x-1/2 rounded-full bg-gradient-to-br from-indigo-500/20 via-violet-500/10 to-emerald-500/20 blur-3xl"
+        aria-hidden="true"
+      />
       <form
-        className="signin-card"
+        className="relative w-full max-w-sm animate-fade-up space-y-4 rounded-2xl border border-border bg-card p-7 shadow-xl"
         onSubmit={submit}
         aria-describedby={error ? errorId : undefined}
       >
-        <span className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            ▲
+        <span className="flex items-center gap-2 text-[15px] font-semibold">
+          <span
+            className="grid size-8 place-items-center rounded-lg bg-gradient-to-br from-indigo-500 via-violet-500 to-emerald-500 text-white"
+            aria-hidden="true"
+          >
+            <TrendingUpIcon className="size-4" strokeWidth={2.5} />
           </span>
           Stock Research
         </span>
-        <h1 className="signin-title">{creating ? "Create your account" : "Sign in"}</h1>
-        {notice && !error && <p className="signin-notice">{notice}</p>}
+        <div>
+          <h1 className="text-xl font-semibold tracking-tight">
+            {creating ? "Create your account" : "Sign in"}
+          </h1>
+          <p className="mt-1 text-sm text-muted-foreground">
+            NASDAQ research with sources on every answer.
+          </p>
+        </div>
+        {notice && !error && (
+          <p className="rounded-lg bg-warning/10 px-3 py-2 text-sm text-amber-800 dark:text-warning">
+            {notice}
+          </p>
+        )}
 
-        <label className="field">
-          <span>Username</span>
+        <Field label="Username">
           <input
             name="username"
             autoComplete="username"
@@ -71,10 +105,10 @@ export default function SignIn({
             maxLength={32}
             value={username}
             onChange={(event) => setUsername(event.target.value)}
+            className={INPUT}
           />
-        </label>
-        <label className="field">
-          <span>Password</span>
+        </Field>
+        <Field label="Password" hint={creating ? "At least 8 characters." : undefined}>
           <input
             name="password"
             type="password"
@@ -84,38 +118,43 @@ export default function SignIn({
             maxLength={128}
             value={password}
             onChange={(event) => setPassword(event.target.value)}
+            className={INPUT}
           />
-          {creating && <small className="muted">At least 8 characters.</small>}
-        </label>
+        </Field>
         {creating && config.invite_required && (
-          <label className="field">
-            <span>Invite code</span>
+          <Field label="Invite code">
             <input
               name="invite"
               autoComplete="off"
               required
               value={invite}
               onChange={(event) => setInvite(event.target.value)}
+              className={INPUT}
             />
-          </label>
+          </Field>
         )}
 
         {error && (
-          <p id={errorId} className="signin-error" role="alert">
+          <p
+            id={errorId}
+            className="rounded-lg bg-down/10 px-3 py-2 text-sm text-down"
+            role="alert"
+          >
             {error}
           </p>
         )}
 
-        <button type="submit" className="send signin-submit" disabled={busy}>
+        <Button type="submit" size="lg" className="w-full" disabled={busy}>
+          <LockIcon aria-hidden="true" />
           {busy ? `${action}…` : action}
-        </button>
+        </Button>
 
         {config.signup && (
-          <p className="signin-switch">
+          <p className="text-center text-sm text-muted-foreground">
             {creating ? "Already have an account?" : "New here?"}{" "}
             <button
               type="button"
-              className="link-button"
+              className="cursor-pointer font-medium text-primary hover:underline"
               onClick={() => {
                 setCreating(!creating);
                 setError(null);

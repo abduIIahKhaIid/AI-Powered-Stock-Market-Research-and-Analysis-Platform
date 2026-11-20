@@ -28,7 +28,7 @@ from stock_api.agent import (
     ToolOutcome,
     ToolPolicy,
 )
-from stock_api.agent.context import Conversation, build_messages, system_prompt
+from stock_api.agent.context import Conversation, build_messages, rewind, system_prompt
 from stock_api.agent.toolbox import compact_for_model
 from stock_api.llm import LLMConfigError, LLMGateway
 from stock_api.main import app
@@ -110,6 +110,21 @@ async def test_question_uses_mcp_tool_and_streams_answer() -> None:
 
     saved = await store.load(done["conversation_id"])
     assert [m["role"] for m in saved.messages] == ["user", "assistant"]
+
+
+async def test_model_reasoning_is_streamed_as_thinking_not_as_answer() -> None:
+    answer = "Apple (AAPL) last closed at 107.1 USD (Fake price source, 2026-11-11)."
+    gateway, _ = scripted_gateway(
+        tool_turn(("get_quote", {"symbol": "AAPL"})),
+        text_turn(f"<think>The quote has the close.</think>{answer}"),
+    )
+    events = await run(make_agent(gateway), "What is Apple's price?")
+
+    thinking = of_type(events, "thinking")
+    assert "".join(t["text"] for t in thinking) == "The quote has the close."
+    assert {t["step"] for t in thinking} == {2}
+    assert "".join(t["text"] for t in of_type(events, "token")) == answer
+    assert of_type(events, "done")[0]["answer"] == answer
 
 
 async def test_non_nasdaq_symbol_error_is_given_to_the_model() -> None:
@@ -390,3 +405,62 @@ async def test_plain_answer_keeps_the_standard_disclaimer() -> None:
     assert done["disclaimer"].startswith("This is educational information")
     assert "Projections" not in done["disclaimer"]
     assert done["grounding"]["status"] == "no_figures"
+
+
+# --- editing an earlier question ------------------------------------------------------
+
+
+def _turns(*pairs: tuple[str, str]) -> list[dict[str, str]]:
+    return [
+        message
+        for question, answer in pairs
+        for message in (
+            {"role": "user", "content": question},
+            {"role": "assistant", "content": answer},
+        )
+    ]
+
+
+def test_rewind_drops_the_edited_question_and_everything_after_it() -> None:
+    conversation = Conversation(
+        summary="older", messages=_turns(("q1", "a1"), ("q2", "a2"), ("q3", "a3"))
+    )
+    conversation.messages.append({"role": "assistant", "content": "job report after q3"})
+
+    rewind(conversation, 2)
+    assert conversation.messages == _turns(("q1", "a1"))
+    assert conversation.summary == "older"
+
+    rewind(conversation, 0)
+    assert conversation.messages == _turns(("q1", "a1"))
+
+
+def test_rewind_past_the_kept_turns_also_forgets_the_summary() -> None:
+    conversation = Conversation(summary="mentions q0", messages=_turns(("q1", "a1")))
+    rewind(conversation, 2)
+    assert conversation.messages == [] and conversation.summary == ""
+
+
+async def test_edited_question_replaces_the_old_turn_in_memory() -> None:
+    gateway, llm = scripted_gateway(
+        text_turn("First answer."),
+        text_turn("Second answer."),
+        text_turn("Edited answer."),
+    )
+    store = MemoryConversationStore()
+    agent = make_agent(gateway, store)
+    first = await run(agent, "What does P/E mean?")
+    conversation_id = of_type(first, "conversation")[0]["conversation_id"]
+    await run(agent, "And EPS?", conversation_id=conversation_id)
+
+    await run(agent, "And revenue?", conversation_id=conversation_id, rewind_turns=1)
+
+    sent = [m["content"] for m in llm.requests[-1]["messages"] if m["role"] != "system"]
+    assert sent == ["What does P/E mean?", "First answer.", "And revenue?"]
+    saved = await store.load(conversation_id)
+    assert [m["content"] for m in saved.messages] == [
+        "What does P/E mean?",
+        "First answer.",
+        "And revenue?",
+        "Edited answer.",
+    ]
